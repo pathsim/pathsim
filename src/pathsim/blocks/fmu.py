@@ -312,6 +312,13 @@ class ModelExchangeFMU(DynamicalSystem):
     by PathSim's numerical solvers. Internal FMU events (state events and time
     events) are translated to PathSim events.
 
+    .. note::
+        **Known Limitation**: FMU step completion events (via ``completedIntegratorStep()``)
+        are not currently supported due to architectural constraints in PathSim's simulation
+        loop. Most FMUs rely on state events (zero-crossings) and time events, which are
+        fully supported. If your FMU requires step completion events, please contact the
+        PathSim developers.
+
     Parameters
     ----------
     fmu_path : str
@@ -499,6 +506,9 @@ class ModelExchangeFMU(DynamicalSystem):
 
         # Extract capabilities
         self.provides_directional_derivative = getattr(me, 'providesDirectionalDerivative', False)
+
+        # Note: completedIntegratorStepNotNeeded is extracted but not currently used
+        # due to architectural limitations in PathSim's simulation loop
         self.completed_integrator_step_not_needed = getattr(me, 'completedIntegratorStepNotNeeded', False)
 
         # Model metadata
@@ -588,51 +598,6 @@ class ModelExchangeFMU(DynamicalSystem):
             output_vrefs = list(self._output_refs.values())
             return self.fmu.getReal(output_vrefs)
         return np.array([])
-
-
-    def step(self, t, dt):
-        """Compute timestep update with integration engine and handle FMU step events.
-
-        This overrides DynamicalSystem.step() to add completedIntegratorStep handling.
-
-        Parameters
-        ----------
-        t : float
-            evaluation time
-        dt : float
-            integration timestep
-
-        Returns
-        -------
-        success : bool
-            step was successful
-        error : float
-            local truncation error from adaptive integrators
-        scale : float
-            timestep rescale from adaptive integrators
-        """
-        # Call parent's step method
-        success, error, scale = super().step(t, dt)
-
-        # If step was successful and FMU requires completedIntegratorStep
-        if success and not self.completed_integrator_step_not_needed:
-            # Call completedIntegratorStep to check for step events
-            enter_event_mode, terminate_simulation = self.fmu.completedIntegratorStep()
-
-            if terminate_simulation:
-                if self.verbose:
-                    print("FMU requested termination in completedIntegratorStep")
-                raise RuntimeError("FMU requested simulation termination")
-
-            # If FMU signals an event at end of step
-            if enter_event_mode:
-                if self.verbose:
-                    print(f"Step event triggered at t={t+dt}")
-
-                # Handle the step event
-                self._handle_event(t + dt)
-
-        return success, error, scale
 
 
     def _get_event_indicator(self, idx):
