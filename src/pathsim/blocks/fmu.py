@@ -448,6 +448,19 @@ class ModelExchangeFMU(DynamicalSystem):
         # Exit initialization mode and check for initial events
         event_info = self.fmu.exitInitializationMode()
 
+        # Handle initial events if any
+        if event_info is not None and hasattr(event_info, 'nextEventTimeDefined'):
+            if event_info.nextEventTimeDefined:
+                # Store initial time event for later
+                self._initial_time_event = event_info.nextEventTime
+            else:
+                self._initial_time_event = None
+        else:
+            self._initial_time_event = None
+
+        # Enter continuous time mode after initialization
+        self.fmu.enterContinuousTimeMode()
+
         # Get initial continuous states
         initial_states = self.fmu.getContinuousStates()
 
@@ -471,10 +484,9 @@ class ModelExchangeFMU(DynamicalSystem):
             )
             self.events.append(event)
 
-        # Check if FMU has initial time events scheduled
-        if event_info is not None and hasattr(event_info, 'nextEventTimeDefined'):
-            if event_info.nextEventTimeDefined:
-                self._update_time_events(event_info.nextEventTime)
+        # Schedule initial time event if any
+        if self._initial_time_event is not None:
+            self._update_time_events(self._initial_time_event)
 
 
     def _extract_fmu_metadata(self):
@@ -578,6 +590,51 @@ class ModelExchangeFMU(DynamicalSystem):
         return np.array([])
 
 
+    def step(self, t, dt):
+        """Compute timestep update with integration engine and handle FMU step events.
+
+        This overrides DynamicalSystem.step() to add completedIntegratorStep handling.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        dt : float
+            integration timestep
+
+        Returns
+        -------
+        success : bool
+            step was successful
+        error : float
+            local truncation error from adaptive integrators
+        scale : float
+            timestep rescale from adaptive integrators
+        """
+        # Call parent's step method
+        success, error, scale = super().step(t, dt)
+
+        # If step was successful and FMU requires completedIntegratorStep
+        if success and not self.completed_integrator_step_not_needed:
+            # Call completedIntegratorStep to check for step events
+            enter_event_mode, terminate_simulation = self.fmu.completedIntegratorStep()
+
+            if terminate_simulation:
+                if self.verbose:
+                    print("FMU requested termination in completedIntegratorStep")
+                raise RuntimeError("FMU requested simulation termination")
+
+            # If FMU signals an event at end of step
+            if enter_event_mode:
+                if self.verbose:
+                    print(f"Step event triggered at t={t+dt}")
+
+                # Handle the step event
+                self._handle_event(t + dt)
+
+        return success, error, scale
+
+
     def _get_event_indicator(self, idx):
         """Get value of a specific event indicator.
 
@@ -619,6 +676,9 @@ class ModelExchangeFMU(DynamicalSystem):
             # Break if no more discrete state updates needed
             if not event_info.newDiscreteStatesNeeded:
                 break
+
+        # Re-enter continuous time mode after event handling
+        self.fmu.enterContinuousTimeMode()
 
         # Check if continuous states changed during event
         if event_info.valuesOfContinuousStatesChanged:
@@ -672,6 +732,9 @@ class ModelExchangeFMU(DynamicalSystem):
             self.fmu.enterInitializationMode()
 
         self.fmu.exitInitializationMode()
+
+        # Enter continuous time mode after re-initialization
+        self.fmu.enterContinuousTimeMode()
 
         # Reset to initial states
         initial_states = self.fmu.getContinuousStates()
