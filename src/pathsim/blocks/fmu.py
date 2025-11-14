@@ -343,10 +343,6 @@ class ModelExchangeFMU(DynamicalSystem):
         reference map for input variables
     _output_refs : dict
         reference map for output variables
-    _state_refs : list
-        references for continuous states
-    _derivative_refs : list
-        references for state derivatives
     n_states : int
         number of continuous states
     n_event_indicators : int
@@ -392,11 +388,9 @@ class ModelExchangeFMU(DynamicalSystem):
         # Extract metadata and capabilities
         self._extract_fmu_metadata()
 
-        # Get input, output, and state variable references
+        # Get input and output variable references
         self._input_refs = {}
         self._output_refs = {}
-        self._state_refs = []
-        self._derivative_refs = []
 
         for variable in self.model_description.modelVariables:
             if variable.causality == 'input':
@@ -448,15 +442,12 @@ class ModelExchangeFMU(DynamicalSystem):
         # Exit initialization mode and check for initial events
         event_info = self.fmu.exitInitializationMode()
 
-        # Handle initial events if any
-        if event_info is not None and hasattr(event_info, 'nextEventTimeDefined'):
-            if event_info.nextEventTimeDefined:
-                # Store initial time event for later
-                self._initial_time_event = event_info.nextEventTime
-            else:
-                self._initial_time_event = None
-        else:
-            self._initial_time_event = None
+        # Store initial time event if defined
+        self._initial_time_event = (
+            event_info.nextEventTime
+            if event_info and getattr(event_info, 'nextEventTimeDefined', False)
+            else None
+        )
 
         # Enter continuous time mode after initialization
         self.fmu.enterContinuousTimeMode()
@@ -512,15 +503,41 @@ class ModelExchangeFMU(DynamicalSystem):
 
     def _set_start_values(self):
         """Set initial values for FMU variables."""
+        if not self.start_values:
+            return
+
+        # Build variable lookup dict for efficient access
+        var_map = {v.name: v for v in self.model_description.modelVariables}
+
         for name, value in self.start_values.items():
-            for variable in self.model_description.modelVariables:
-                if variable.name == name:
-                    if variable.type in ['Real', 'Float64', 'Float32']:
-                        self.fmu.setReal([variable.valueReference], [value])
-                    elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
-                        self.fmu.setInteger([variable.valueReference], [int(value)])
-                    elif variable.type == 'Boolean':
-                        self.fmu.setBoolean([variable.valueReference], [bool(value)])
+            variable = var_map.get(name)
+            if variable is None:
+                continue
+
+            if variable.type in ['Real', 'Float64', 'Float32']:
+                self.fmu.setReal([variable.valueReference], [value])
+            elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
+                self.fmu.setInteger([variable.valueReference], [int(value)])
+            elif variable.type == 'Boolean':
+                self.fmu.setBoolean([variable.valueReference], [bool(value)])
+
+
+    def _set_fmu_state(self, x, u, t):
+        """Set FMU state (time, continuous states, inputs).
+
+        Parameters
+        ----------
+        x : array
+            continuous state vector
+        u : array
+            input vector
+        t : float
+            current time
+        """
+        self.fmu.setTime(t)
+        self.fmu.setContinuousStates(x)
+        if self._input_refs:
+            self.fmu.setReal(list(self._input_refs.values()), u)
 
 
     def _get_derivatives(self, x, u, t):
@@ -540,18 +557,7 @@ class ModelExchangeFMU(DynamicalSystem):
         dx : array
             state derivatives
         """
-        # Set time
-        self.fmu.setTime(t)
-
-        # Set continuous states
-        self.fmu.setContinuousStates(x)
-
-        # Set inputs
-        if len(self._input_refs) > 0:
-            input_vrefs = list(self._input_refs.values())
-            self.fmu.setReal(input_vrefs, u)
-
-        # Get derivatives
+        self._set_fmu_state(x, u, t)
         return self.fmu.getDerivatives()
 
 
@@ -572,21 +578,9 @@ class ModelExchangeFMU(DynamicalSystem):
         y : array
             output vector
         """
-        # Set time
-        self.fmu.setTime(t)
-
-        # Set continuous states
-        self.fmu.setContinuousStates(x)
-
-        # Set inputs
-        if len(self._input_refs) > 0:
-            input_vrefs = list(self._input_refs.values())
-            self.fmu.setReal(input_vrefs, u)
-
-        # Get outputs
-        if len(self._output_refs) > 0:
-            output_vrefs = list(self._output_refs.values())
-            return self.fmu.getReal(output_vrefs)
+        self._set_fmu_state(x, u, t)
+        if self._output_refs:
+            return self.fmu.getReal(list(self._output_refs.values()))
         return np.array([])
 
 
@@ -653,6 +647,9 @@ class ModelExchangeFMU(DynamicalSystem):
         if self.verbose:
             print(f"FMU event detected at t={t}")
 
+        # Enter event mode before event iteration
+        self.fmu.enterEventMode()
+
         # Perform event update iteration until discrete states stabilize
         while True:
             event_info = self.fmu.eventUpdate()
@@ -700,11 +697,10 @@ class ModelExchangeFMU(DynamicalSystem):
                 tolerance=self.tolerance
             )
             self.events.append(self.time_event)
-        else:
-            # Update existing schedule by appending new time
-            if next_time not in self.time_event.times_evt:
-                self.time_event.times_evt.append(next_time)
-                self.time_event.times_evt.sort()
+        elif next_time not in self.time_event.times_evt:
+            # Insert new time in sorted order
+            import bisect
+            bisect.insort(self.time_event.times_evt, next_time)
 
 
     def reset(self):
@@ -712,6 +708,7 @@ class ModelExchangeFMU(DynamicalSystem):
         super().reset()
         self.fmu.reset()
 
+        # Re-initialize FMU
         if self.fmi_version.startswith('3.'):
             self.fmu.enterInitializationMode(
                 tolerance=self.tolerance,
@@ -719,16 +716,22 @@ class ModelExchangeFMU(DynamicalSystem):
                 stopTime=None
             )
         else:
+            self.fmu.setupExperiment(tolerance=self.tolerance, startTime=0.0)
             self.fmu.enterInitializationMode()
 
-        self.fmu.exitInitializationMode()
-
-        # Enter continuous time mode after re-initialization
+        self._set_start_values()
+        event_info = self.fmu.exitInitializationMode()
         self.fmu.enterContinuousTimeMode()
 
         # Reset to initial states
-        initial_states = self.fmu.getContinuousStates()
-        self.engine.set(initial_states)
+        self.engine.set(self.fmu.getContinuousStates())
+
+        # Reset time events and re-schedule initial event if present
+        if self.time_event is not None:
+            self.time_event.times_evt.clear()
+            if self._initial_time_event is not None:
+                import bisect
+                bisect.insort(self.time_event.times_evt, self._initial_time_event)
 
 
     def __del__(self):
@@ -736,5 +739,5 @@ class ModelExchangeFMU(DynamicalSystem):
         try:
             self.fmu.terminate()
             self.fmu.freeInstance()
-        except:
+        except Exception:
             pass
