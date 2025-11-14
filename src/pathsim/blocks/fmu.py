@@ -11,9 +11,9 @@ import numpy as np
 
 from ._block import Block
 from .dynsys import DynamicalSystem
+
 from ..events.schedule import Schedule, ScheduleList
 from ..events.zerocrossing import ZeroCrossing
-from ..optim.operator import DynamicOperator
 
 
 # BLOCKS ================================================================================
@@ -309,15 +309,8 @@ class ModelExchangeFMU(DynamicalSystem):
 
     This block wraps an FMU (Functional Mock-up Unit) for model exchange.
     The FMU provides the right-hand side of an ODE system that is integrated
-    by PathSim's numerical solvers. Internal FMU events (state events and time
-    events) are translated to PathSim events.
-
-    .. note::
-        **Known Limitation**: FMU step completion events (via ``completedIntegratorStep()``)
-        are not currently supported due to architectural constraints in PathSim's simulation
-        loop. Most FMUs rely on state events (zero-crossings) and time events, which are
-        fully supported. If your FMU requires step completion events, please contact the
-        PathSim developers.
+    by PathSim's numerical solvers. Internal FMU events (state events, time
+    events, and step completion events) are translated to PathSim events.
 
     Parameters
     ----------
@@ -506,9 +499,6 @@ class ModelExchangeFMU(DynamicalSystem):
 
         # Extract capabilities
         self.provides_directional_derivative = getattr(me, 'providesDirectionalDerivative', False)
-
-        # Note: completedIntegratorStepNotNeeded is extracted but not currently used
-        # due to architectural limitations in PathSim's simulation loop
         self.completed_integrator_step_not_needed = getattr(me, 'completedIntegratorStepNotNeeded', False)
 
         # Model metadata
@@ -598,6 +588,41 @@ class ModelExchangeFMU(DynamicalSystem):
             output_vrefs = list(self._output_refs.values())
             return self.fmu.getReal(output_vrefs)
         return np.array([])
+
+
+    def sample(self, t, dt):
+        """Sample block after successful timestep and handle FMU step completion events.
+
+        This is called by the simulation after a complete timestep (all RK stages finished).
+        It's the proper place to call completedIntegratorStep() per FMI standard.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time for sampling
+        dt : float
+            integration timestep
+        """
+        # Call parent's sample method (if any)
+        super().sample(t, dt)
+
+        # If FMU requires completedIntegratorStep, call it after successful step
+        if not self.completed_integrator_step_not_needed:
+            # Notify FMU that integration step completed
+            enter_event_mode, terminate_simulation = self.fmu.completedIntegratorStep()
+
+            if terminate_simulation:
+                if self.verbose:
+                    print("FMU requested termination in completedIntegratorStep")
+                raise RuntimeError("FMU requested simulation termination")
+
+            # If FMU signals a step event
+            if enter_event_mode:
+                if self.verbose:
+                    print(f"Step completion event at t={t}")
+
+                # Handle the step event
+                self._handle_event(t)
 
 
     def _get_event_indicator(self, idx):
