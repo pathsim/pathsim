@@ -541,6 +541,9 @@ class ModelExchangeFMU(DynamicalSystem):
         states : array
             continuous state vector
         """
+        if self.n_states == 0:
+            return np.array([])
+
         if self.fmi_version.startswith('2'):
             return self.fmu.getContinuousStates()
         else:  # FMI 3.0
@@ -563,12 +566,14 @@ class ModelExchangeFMU(DynamicalSystem):
             current time
         """
         self.fmu.setTime(t)
-        if self.fmi_version.startswith('2'):
-            self.fmu.setContinuousStates(x)
-        else:  # FMI 3.0
-            import ctypes
-            x_ctypes = (ctypes.c_double * self.n_states)(*x)
-            self.fmu.setContinuousStates(x_ctypes, self.n_states)
+
+        if self.n_states > 0:
+            if self.fmi_version.startswith('2'):
+                self.fmu.setContinuousStates(x)
+            else:  # FMI 3.0
+                import ctypes
+                x_ctypes = (ctypes.c_double * self.n_states)(*x)
+                self.fmu.setContinuousStates(x_ctypes, self.n_states)
 
         if self._input_refs:
             input_vrefs = list(self._input_refs.values())
@@ -595,6 +600,9 @@ class ModelExchangeFMU(DynamicalSystem):
         dx : array
             state derivatives
         """
+        if self.n_states == 0:
+            return np.array([])
+
         self._set_fmu_state(x, u, t)
         if self.fmi_version.startswith('2'):
             return self.fmu.getDerivatives()
@@ -706,18 +714,49 @@ class ModelExchangeFMU(DynamicalSystem):
         self.fmu.enterEventMode()
 
         # Perform event update iteration until discrete states stabilize
-        while True:
-            event_info = self.fmu.eventUpdate()
+        if self.fmi_version.startswith('2'):
+            # FMI 2.0 API - returns EventInfo object
+            while True:
+                event_info = self.fmu.eventUpdate()
 
-            # Check if simulation should terminate
-            if event_info.terminateSimulation:
-                if self.verbose:
-                    print("FMU requested simulation termination")
-                raise RuntimeError("FMU requested simulation termination")
+                # Check if simulation should terminate
+                if event_info.terminateSimulation:
+                    if self.verbose:
+                        print("FMU requested simulation termination")
+                    raise RuntimeError("FMU requested simulation termination")
 
-            # Break if no more discrete state updates needed
-            if not event_info.newDiscreteStatesNeeded:
-                break
+                # Break if no more discrete state updates needed
+                if not event_info.newDiscreteStatesNeeded:
+                    break
+        else:
+            # FMI 3.0 API - returns tuple
+            # (discreteStatesNeedUpdate, terminateSimulation, nominalsChanged,
+            #  valuesChanged, nextEventTimeDefined, nextEventTime)
+            while True:
+                result = self.fmu.updateDiscreteStates()
+                discreteStatesNeedUpdate = result[0]
+                terminateSimulation = result[1]
+                valuesOfContinuousStatesChanged = result[3]
+                nextEventTimeDefined = result[4]
+                nextEventTime = result[5]
+
+                # Check if simulation should terminate
+                if terminateSimulation:
+                    if self.verbose:
+                        print("FMU requested simulation termination")
+                    raise RuntimeError("FMU requested simulation termination")
+
+                # Break if no more discrete state updates needed
+                if not discreteStatesNeedUpdate:
+                    break
+
+            # Create event_info-like object for unified handling below
+            class EventInfo:
+                pass
+            event_info = EventInfo()
+            event_info.valuesOfContinuousStatesChanged = valuesOfContinuousStatesChanged
+            event_info.nextEventTimeDefined = nextEventTimeDefined
+            event_info.nextEventTime = nextEventTime
 
         # Re-enter continuous time mode after event handling
         self.fmu.enterContinuousTimeMode()
