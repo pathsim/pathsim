@@ -1,0 +1,32 @@
+{
+  "name": "pathsimjs",
+  "version": "0.1.0",
+  "description": "A flexible block-based time-domain system simulation framework for JavaScript",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "simulation",
+    "dynamical-systems",
+    "block-diagram",
+    "control-systems",
+    "ode-solver",
+    "numerical-integration"
+  ],
+  "author": "PathSim Contributors",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pathsim/pathsim.git",
+    "directory": "src/pathsimjs"
+  },
+  "bugs": {
+    "url": "https://github.com/pathsim/pathsim/issues"
+  },
+  "homepage": "https://github.com/pathsim/pathsim#readme"
+}
