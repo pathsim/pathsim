@@ -453,7 +453,7 @@ class ModelExchangeFMU(DynamicalSystem):
         self.fmu.enterContinuousTimeMode()
 
         # Get initial continuous states
-        initial_states = self.fmu.getContinuousStates()
+        initial_states = self._get_continuous_states()
 
         # Initialize parent DynamicalSystem with FMU dynamics
         super().__init__(
@@ -514,12 +514,40 @@ class ModelExchangeFMU(DynamicalSystem):
             if variable is None:
                 continue
 
-            if variable.type in ['Real', 'Float64', 'Float32']:
-                self.fmu.setReal([variable.valueReference], [value])
-            elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
-                self.fmu.setInteger([variable.valueReference], [int(value)])
-            elif variable.type == 'Boolean':
-                self.fmu.setBoolean([variable.valueReference], [bool(value)])
+            vr = variable.valueReference
+            if self.fmi_version.startswith('2'):
+                # FMI 2.0 API
+                if variable.type in ['Real', 'Float64', 'Float32']:
+                    self.fmu.setReal([vr], [value])
+                elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
+                    self.fmu.setInteger([vr], [int(value)])
+                elif variable.type == 'Boolean':
+                    self.fmu.setBoolean([vr], [bool(value)])
+            else:
+                # FMI 3.0 API (FMPy provides simplified wrappers)
+                if variable.type in ['Real', 'Float64', 'Float32']:
+                    self.fmu.setFloat64([vr], [value])
+                elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
+                    self.fmu.setInt64([vr], [int(value)])
+                elif variable.type == 'Boolean':
+                    self.fmu.setBoolean([vr], [bool(value)])
+
+
+    def _get_continuous_states(self):
+        """Get continuous states from FMU (handles FMI 2.0 and 3.0 API differences).
+
+        Returns
+        -------
+        states : array
+            continuous state vector
+        """
+        if self.fmi_version.startswith('2'):
+            return self.fmu.getContinuousStates()
+        else:  # FMI 3.0
+            import ctypes
+            states = (ctypes.c_double * self.n_states)()
+            self.fmu.getContinuousStates(states, self.n_states)
+            return np.array(states)
 
 
     def _set_fmu_state(self, x, u, t):
@@ -535,9 +563,19 @@ class ModelExchangeFMU(DynamicalSystem):
             current time
         """
         self.fmu.setTime(t)
-        self.fmu.setContinuousStates(x)
+        if self.fmi_version.startswith('2'):
+            self.fmu.setContinuousStates(x)
+        else:  # FMI 3.0
+            import ctypes
+            x_ctypes = (ctypes.c_double * self.n_states)(*x)
+            self.fmu.setContinuousStates(x_ctypes, self.n_states)
+
         if self._input_refs:
-            self.fmu.setReal(list(self._input_refs.values()), u)
+            input_vrefs = list(self._input_refs.values())
+            if self.fmi_version.startswith('2'):
+                self.fmu.setReal(input_vrefs, u)
+            else:  # FMI 3.0
+                self.fmu.setFloat64(input_vrefs, u)
 
 
     def _get_derivatives(self, x, u, t):
@@ -558,7 +596,13 @@ class ModelExchangeFMU(DynamicalSystem):
             state derivatives
         """
         self._set_fmu_state(x, u, t)
-        return self.fmu.getDerivatives()
+        if self.fmi_version.startswith('2'):
+            return self.fmu.getDerivatives()
+        else:  # FMI 3.0
+            import ctypes
+            derivatives = (ctypes.c_double * self.n_states)()
+            self.fmu.getContinuousStateDerivatives(derivatives, self.n_states)
+            return np.array(derivatives)
 
 
     def _get_outputs(self, x, u, t):
@@ -579,9 +623,14 @@ class ModelExchangeFMU(DynamicalSystem):
             output vector
         """
         self._set_fmu_state(x, u, t)
-        if self._output_refs:
-            return self.fmu.getReal(list(self._output_refs.values()))
-        return np.array([])
+        if not self._output_refs:
+            return np.array([])
+
+        output_vrefs = list(self._output_refs.values())
+        if self.fmi_version.startswith('2'):
+            return self.fmu.getReal(output_vrefs)
+        else:  # FMI 3.0
+            return np.array(self.fmu.getFloat64(output_vrefs))
 
 
     def sample(self, t, dt):
@@ -632,8 +681,14 @@ class ModelExchangeFMU(DynamicalSystem):
         float
             event indicator value
         """
-        indicators = self.fmu.getEventIndicators()
-        return indicators[idx]
+        if self.fmi_version.startswith('2'):
+            indicators = self.fmu.getEventIndicators()
+            return indicators[idx]
+        else:  # FMI 3.0
+            import ctypes
+            indicators = (ctypes.c_double * self.n_event_indicators)()
+            self.fmu.getEventIndicators(indicators, self.n_event_indicators)
+            return indicators[idx]
 
 
     def _handle_event(self, t):
@@ -669,7 +724,7 @@ class ModelExchangeFMU(DynamicalSystem):
 
         # Check if continuous states changed during event
         if event_info.valuesOfContinuousStatesChanged:
-            x_new = self.fmu.getContinuousStates()
+            x_new = self._get_continuous_states()
             self.engine.set(x_new)
             if self.verbose:
                 print(f"Continuous states updated after event: {x_new}")
@@ -724,7 +779,7 @@ class ModelExchangeFMU(DynamicalSystem):
         self.fmu.enterContinuousTimeMode()
 
         # Reset to initial states
-        self.engine.set(self.fmu.getContinuousStates())
+        self.engine.set(self._get_continuous_states())
 
         # Reset time events and re-schedule initial event if present
         if self.time_event is not None:
