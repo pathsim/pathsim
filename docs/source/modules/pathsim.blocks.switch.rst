@@ -1,5 +1,5 @@
-pathsim.blocks.switch module
-============================
+Switch
+======
 
 .. automodule:: pathsim.blocks.switch
    :members:

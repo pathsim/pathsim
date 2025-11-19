@@ -1,5 +1,5 @@
-pathsim.blocks.ode module
-=========================
+ODE
+===
 
 .. automodule:: pathsim.blocks.ode
    :members:

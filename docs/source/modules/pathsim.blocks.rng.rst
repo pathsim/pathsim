@@ -1,5 +1,5 @@
-pathsim.blocks.rng module
-=========================
+RNG
+===
 
 .. automodule:: pathsim.blocks.rng
    :members:

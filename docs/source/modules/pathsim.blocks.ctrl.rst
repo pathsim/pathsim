@@ -1,5 +1,5 @@
-pathsim.blocks.ctrl module
-==========================
+Control
+=======
 
 .. automodule:: pathsim.blocks.ctrl
    :members:

@@ -1,5 +1,5 @@
-pathsim.blocks.sources module
-=============================
+Sources
+=======
 
 .. automodule:: pathsim.blocks.sources
    :members:

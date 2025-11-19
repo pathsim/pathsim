@@ -1,5 +1,5 @@
-pathsim.blocks.rf module
-========================
+RF
+==
 
 .. automodule:: pathsim.blocks.rf
    :members:

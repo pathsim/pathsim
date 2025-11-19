@@ -1,5 +1,5 @@
-pathsim.blocks.noise module
-===========================
+Noise
+=====
 
 .. automodule:: pathsim.blocks.noise
    :members:

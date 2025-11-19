@@ -1,5 +1,5 @@
-pathsim.blocks.kalman module
-=============================
+Kalman Filter
+=============
 
 .. automodule:: pathsim.blocks.kalman
    :members:

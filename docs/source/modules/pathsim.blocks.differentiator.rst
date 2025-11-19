@@ -1,5 +1,5 @@
-pathsim.blocks.differentiator module
-====================================
+Differentiator
+==============
 
 .. automodule:: pathsim.blocks.differentiator
    :members:

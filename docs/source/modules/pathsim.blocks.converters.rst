@@ -1,5 +1,5 @@
-pathsim.blocks.converters module
-================================
+Converters
+==========
 
 .. automodule:: pathsim.blocks.converters
    :members:

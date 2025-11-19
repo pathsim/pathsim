@@ -1,5 +1,5 @@
-pathsim.blocks.integrator module
-================================
+Integrator
+==========
 
 .. automodule:: pathsim.blocks.integrator
    :members:

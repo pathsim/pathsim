@@ -1,5 +1,5 @@
-pathsim.blocks._block module
-============================
+Block Base
+==========
 
 .. automodule:: pathsim.blocks._block
    :members:

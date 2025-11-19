@@ -1,5 +1,5 @@
-pathsim.blocks.dynsys module
-============================
+Dynamical System
+================
 
 .. automodule:: pathsim.blocks.dynsys
    :members:

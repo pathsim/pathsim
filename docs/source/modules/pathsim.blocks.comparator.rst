@@ -1,5 +1,5 @@
-pathsim.blocks.comparator module
-================================
+Comparator
+==========
 
 .. automodule:: pathsim.blocks.comparator
    :members:

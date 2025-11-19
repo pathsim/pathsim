@@ -1,5 +1,5 @@
-pathsim.blocks.samplehold module
-======================================
+Sample & Hold
+=============
 
 .. automodule:: pathsim.blocks.samplehold
    :members:

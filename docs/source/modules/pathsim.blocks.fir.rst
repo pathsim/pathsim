@@ -1,5 +1,5 @@
-pathsim.blocks.fir module
-=========================
+FIR
+===
 
 .. automodule:: pathsim.blocks.fir
    :members:

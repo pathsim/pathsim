@@ -1,5 +1,5 @@
-pathsim.blocks.multiplier module
-================================
+Multiplier
+==========
 
 .. automodule:: pathsim.blocks.multiplier
    :members:

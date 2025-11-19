@@ -1,5 +1,5 @@
-pathsim.blocks.adder module
-===========================
+Adder
+=====
 
 .. automodule:: pathsim.blocks.adder
    :members:

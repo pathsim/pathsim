@@ -1,5 +1,5 @@
-pathsim.blocks.function module
-==============================
+Function
+========
 
 .. automodule:: pathsim.blocks.function
    :members:

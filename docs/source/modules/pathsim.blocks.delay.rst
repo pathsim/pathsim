@@ -1,5 +1,5 @@
-pathsim.blocks.delay module
-===========================
+Delay
+=====
 
 .. automodule:: pathsim.blocks.delay
    :members:

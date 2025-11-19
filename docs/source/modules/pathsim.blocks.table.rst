@@ -1,7 +1,7 @@
-Math
-====
+Table
+=====
 
-.. automodule:: pathsim.blocks.math
+.. automodule:: pathsim.blocks.table
    :members:
    :show-inheritance:
    :undoc-members:

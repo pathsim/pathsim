@@ -1,5 +1,5 @@
-pathsim.blocks.wrapper module
-=============================
+Wrapper
+=======
 
 .. automodule:: pathsim.blocks.wrapper
    :members:

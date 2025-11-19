@@ -1,5 +1,5 @@
-pathsim.blocks.filters module
-=============================
+Filters
+=======
 
 .. automodule:: pathsim.blocks.filters
    :members:

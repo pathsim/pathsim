@@ -1,5 +1,5 @@
-pathsim.blocks.spectrum module
-==============================
+Spectrum
+========
 
 .. automodule:: pathsim.blocks.spectrum
    :members:

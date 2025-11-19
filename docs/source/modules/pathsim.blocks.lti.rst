@@ -1,5 +1,5 @@
-pathsim.blocks.lti module
-=========================
+LTI
+===
 
 .. automodule:: pathsim.blocks.lti
    :members:

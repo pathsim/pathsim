@@ -1,5 +1,5 @@
-pathsim.blocks.amplifier module
-===============================
+Amplifier
+=========
 
 .. automodule:: pathsim.blocks.amplifier
    :members:

@@ -1,7 +1,7 @@
-Math
-====
+Counter
+=======
 
-.. automodule:: pathsim.blocks.math
+.. automodule:: pathsim.blocks.counter
    :members:
    :show-inheritance:
    :undoc-members:

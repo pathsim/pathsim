@@ -1,5 +1,5 @@
-pathsim.blocks.scope module
-===========================
+Scope
+=====
 
 .. automodule:: pathsim.blocks.scope
    :members:
