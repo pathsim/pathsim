@@ -1,5 +1,7 @@
 # PathSimJS
 
+> **Note:** PathSimJS is a JavaScript port of the original [PathSim](https://github.com/pathsim/pathsim) Python library. This is a conversion/fork created to bring PathSim's powerful simulation capabilities to JavaScript/Node.js environments. All credit for the original design and architecture goes to the PathSim contributors.
+
 **PathSimJS** is a flexible block-based time-domain system simulation framework for JavaScript, ported from the Python [PathSim](https://github.com/pathsim/pathsim) library.
 
 ## Overview
@@ -151,11 +153,37 @@ This is a port of the Python PathSim library. For issues or contributions specif
 
 MIT License - Same as the original PathSim project
 
-## Related Projects
+## Original Project
 
-- [PathSim (Python)](https://github.com/pathsim/pathsim) - The original Python implementation
-- [PathSim Documentation](https://pathsim.readthedocs.io/) - Full documentation for the Python version
+**PathSim (Python)** - The original implementation
+🔗 Repository: [https://github.com/pathsim/pathsim](https://github.com/pathsim/pathsim)
+📖 Documentation: [https://pathsim.readthedocs.io/](https://pathsim.readthedocs.io/)
+📦 PyPI: [https://pypi.org/project/pathsim/](https://pypi.org/project/pathsim/)
 
 ## Acknowledgments
 
-This JavaScript port is based on the excellent work done on the Python PathSim library. All credit for the design and architecture goes to the original PathSim contributors.
+This JavaScript port is a conversion/fork of the original Python PathSim library. All credit for the design, architecture, and concepts goes to the original PathSim contributors. This port aims to make the powerful simulation capabilities of PathSim available in JavaScript/Node.js environments while maintaining compatibility with the original API design.
+
+### Differences from Original Python Version
+
+This JavaScript port includes:
+- ✅ Core simulation engine with fixed-point iteration
+- ✅ Basic blocks (Integrator, Amplifier, Adder, Source, Constant, Scope)
+- ✅ SSPRK22 solver (2nd order Runge-Kutta)
+- ✅ Block interconnection system
+- ✅ Data recording and export
+
+Not yet implemented:
+- ⏳ Advanced solvers (adaptive, implicit methods)
+- ⏳ Event system (zero-crossing detection)
+- ⏳ Subsystems and hierarchical modeling
+- ⏳ Linearization capabilities
+- ⏳ Most block types from the Python version
+- ⏳ Serialization/deserialization
+
+## Contributing
+
+Since this is a port of PathSim, we aim to maintain API compatibility with the original Python version where possible. For issues or contributions:
+
+- **PathSimJS-specific issues**: Open an issue in this repository
+- **General PathSim questions/features**: Refer to the [original PathSim repository](https://github.com/pathsim/pathsim)
