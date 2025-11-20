@@ -1,7 +1,7 @@
 .. raw:: html
 
    <div class='github-issues-container'>
-   <p class='issues-updated'>Last updated: 2025-11-20 08:58 UTC</p>
+   <p class='issues-updated'>Last updated: 2025-11-20 17:54 UTC</p>
 
    <div class='github-issue-card'>
       <div class='issue-header'>

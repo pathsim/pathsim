@@ -289,7 +289,19 @@ Complex systems featuring algebraic loops, subsystems, chemical processes, autom
       :link: examples/fmu_cosimulation
       :link-type: doc
 
-      Integration of Functional Mock-up Units (FMU) as PathSim blocks using FMI standard.
+      Integration of Functional Mock-up Units (FMU) as PathSim blocks using FMI co-simulation.
+
+   .. grid-item-card:: ⚽ FMU ME: Bouncing Ball
+      :link: examples/fmu_model_exchange_bouncing_ball
+      :link-type: doc
+
+      Model Exchange FMU with hybrid dynamics and state event detection.
+
+   .. grid-item-card:: 🌀 FMU ME: Van der Pol
+      :link: examples/fmu_model_exchange_vanderpol
+      :link-type: doc
+
+      Model Exchange FMU with nonlinear oscillations and stiff dynamics.
 
    .. grid-item-card:: 💫 Lorenz Poincaré Maps
       :link: examples/poincare_maps
@@ -305,4 +317,6 @@ Complex systems featuring algebraic loops, subsystems, chemical processes, autom
    examples/chemical_reactor.ipynb
    examples/nested_subsystems.ipynb
    examples/fmu_cosimulation.ipynb
+   examples/fmu_model_exchange_bouncing_ball.ipynb
+   examples/fmu_model_exchange_vanderpol.ipynb
    examples/poincare_maps.ipynb
