@@ -544,13 +544,10 @@ class ModelExchangeFMU(DynamicalSystem):
         if self.n_states == 0:
             return np.array([])
 
-        if self.fmi_version.startswith('2'):
-            return self.fmu.getContinuousStates()
-        else:  # FMI 3.0
-            import ctypes
-            states = (ctypes.c_double * self.n_states)()
-            self.fmu.getContinuousStates(states, self.n_states)
-            return np.array(states)
+        import ctypes
+        states = (ctypes.c_double * self.n_states)()
+        self.fmu.getContinuousStates(states, self.n_states)
+        return np.array(states)
 
 
     def _set_fmu_state(self, x, u, t):
@@ -568,12 +565,9 @@ class ModelExchangeFMU(DynamicalSystem):
         self.fmu.setTime(t)
 
         if self.n_states > 0:
-            if self.fmi_version.startswith('2'):
-                self.fmu.setContinuousStates(x)
-            else:  # FMI 3.0
-                import ctypes
-                x_ctypes = (ctypes.c_double * self.n_states)(*x)
-                self.fmu.setContinuousStates(x_ctypes, self.n_states)
+            import ctypes
+            x_ctypes = (ctypes.c_double * self.n_states)(*x)
+            self.fmu.setContinuousStates(x_ctypes, self.n_states)
 
         if self._input_refs:
             input_vrefs = list(self._input_refs.values())
@@ -604,13 +598,13 @@ class ModelExchangeFMU(DynamicalSystem):
             return np.array([])
 
         self._set_fmu_state(x, u, t)
+        import ctypes
+        derivatives = (ctypes.c_double * self.n_states)()
         if self.fmi_version.startswith('2'):
-            return self.fmu.getDerivatives()
+            self.fmu.getDerivatives(derivatives, self.n_states)
         else:  # FMI 3.0
-            import ctypes
-            derivatives = (ctypes.c_double * self.n_states)()
             self.fmu.getContinuousStateDerivatives(derivatives, self.n_states)
-            return np.array(derivatives)
+        return np.array(derivatives)
 
 
     def _get_outputs(self, x, u, t):
@@ -636,7 +630,7 @@ class ModelExchangeFMU(DynamicalSystem):
 
         output_vrefs = list(self._output_refs.values())
         if self.fmi_version.startswith('2'):
-            return self.fmu.getReal(output_vrefs)
+            return np.array(self.fmu.getReal(output_vrefs))
         else:  # FMI 3.0
             return np.array(self.fmu.getFloat64(output_vrefs))
 
@@ -689,14 +683,10 @@ class ModelExchangeFMU(DynamicalSystem):
         float
             event indicator value
         """
-        if self.fmi_version.startswith('2'):
-            indicators = self.fmu.getEventIndicators()
-            return indicators[idx]
-        else:  # FMI 3.0
-            import ctypes
-            indicators = (ctypes.c_double * self.n_event_indicators)()
-            self.fmu.getEventIndicators(indicators, self.n_event_indicators)
-            return indicators[idx]
+        import ctypes
+        indicators = (ctypes.c_double * self.n_event_indicators)()
+        self.fmu.getEventIndicators(indicators, self.n_event_indicators)
+        return indicators[idx]
 
 
     def _handle_event(self, t):
@@ -715,19 +705,34 @@ class ModelExchangeFMU(DynamicalSystem):
 
         # Perform event update iteration until discrete states stabilize
         if self.fmi_version.startswith('2'):
-            # FMI 2.0 API - returns EventInfo object
+            # FMI 2.0 API - returns tuple
+            # (newDiscreteStatesNeeded, terminateSimulation, nominalsOfContinuousStatesChanged,
+            #  valuesOfContinuousStatesChanged, nextEventTimeDefined, nextEventTime)
             while True:
-                event_info = self.fmu.eventUpdate()
+                result = self.fmu.newDiscreteStates()
+                newDiscreteStatesNeeded = result[0]
+                terminateSimulation = result[1]
+                valuesOfContinuousStatesChanged = result[3]
+                nextEventTimeDefined = result[4]
+                nextEventTime = result[5]
 
                 # Check if simulation should terminate
-                if event_info.terminateSimulation:
+                if terminateSimulation:
                     if self.verbose:
                         print("FMU requested simulation termination")
                     raise RuntimeError("FMU requested simulation termination")
 
                 # Break if no more discrete state updates needed
-                if not event_info.newDiscreteStatesNeeded:
+                if not newDiscreteStatesNeeded:
                     break
+
+            # Create event_info-like object for unified handling below
+            class EventInfo:
+                pass
+            event_info = EventInfo()
+            event_info.valuesOfContinuousStatesChanged = valuesOfContinuousStatesChanged
+            event_info.nextEventTimeDefined = nextEventTimeDefined
+            event_info.nextEventTime = nextEventTime
         else:
             # FMI 3.0 API - returns tuple
             # (discreteStatesNeedUpdate, terminateSimulation, nominalsChanged,
