@@ -14,6 +14,7 @@ from .dynsys import DynamicalSystem
 
 from ..events.schedule import Schedule, ScheduleList
 from ..events.zerocrossing import ZeroCrossing
+from ..utils.fmuwrapper import FMUWrapper
 
 
 # BLOCKS ================================================================================
@@ -21,8 +22,8 @@ from ..events.zerocrossing import ZeroCrossing
 class CoSimulationFMU(Block):
     """Co-Simulation FMU block using FMPy with support for FMI 2.0 and FMI 3.0.
 
-    This block wraps an FMU (Functional Mock-up Unit) for co-simulation. 
-    The FMU encapsulates a simulation model that can be executed independently 
+    This block wraps an FMU (Functional Mock-up Unit) for co-simulation.
+    The FMU encapsulates a simulation model that can be executed independently
     and synchronized with the main simulation.
 
     Parameters
@@ -34,38 +35,15 @@ class CoSimulationFMU(Block):
     start_values : dict, optional
         dictionary of variable names and their initial values
     dt : float, optional
-        communication step size for co-simulation. If None, uses the FMU's 
+        communication step size for co-simulation. If None, uses the FMU's
         default experiment step size if available.
 
     Attributes
     ----------
-    fmu_path : str
-        path to the FMU file
-    instance_name : str
-        name of the FMU instance
-    start_values : dict
-        initial values for FMU variables
-    model_description : ModelDescription
-        FMI model description from FMPy
-    fmu : FMU2Slave or FMU3Slave
-        FMPy FMU instance for co-simulation
-    fmi_version : str
-        FMI version ('2.0' or '3.0')
-    _input_refs : dict
-        reference map for input variables
-    _output_refs : dict
-        reference map for output variables
-    
-    FMU Capabilities
-    ----------------
-    can_interpolate_inputs : bool
-        whether FMU can interpolate inputs between communication points
-    can_handle_variable_step : bool
-        whether FMU supports variable communication step sizes
-    default_step_size : float or None
-        recommended default step size from FMU
-    max_output_derivative_order : int
-        maximum order of output derivatives available
+    fmu_wrapper : FMUWrapper
+        version-agnostic FMU wrapper instance
+    dt : float
+        communication step size
     """
 
     #max number of ports (will be configured based on FMU)
@@ -76,35 +54,29 @@ class CoSimulationFMU(Block):
     _port_map_in = {}
     _port_map_out = {}
 
-    def __init__(self, fmu_path, instance_name="fmu_instance", start_values=None, 
+    def __init__(self, fmu_path, instance_name="fmu_instance", start_values=None,
                  dt=None, verbose=False):
-
-        # Import FMPy here to avoid requiring it as a dependency if not used
-        try:
-            from fmpy import read_model_description, extract
-            from fmpy.fmi2 import FMU2Slave
-            from fmpy.fmi3 import FMU3Slave
-        except ImportError:
-            raise ImportError("FMPy is required for FMU blocks. Install with: pip install fmpy")
 
         self.fmu_path = fmu_path
         self.instance_name = instance_name
-        self.start_values = start_values if start_values is not None else {}
         self.verbose = verbose
+        self.start_values = start_values if start_values is not None else {}
 
-        # Read model description
-        self.model_description = read_model_description(fmu_path)
-        
-        # Detect FMI version
-        self.fmi_version = self.model_description.fmiVersion
-        
-        # Extract FMU
-        self.unzipdir = extract(fmu_path)
+        # Create FMU wrapper
+        self.fmu_wrapper = FMUWrapper(fmu_path, instance_name, mode='cosimulation')
 
-        # Extract metadata and capabilities
+        # Expose commonly used attributes for backward compatibility
+        self.model_description = self.fmu_wrapper.model_description
+        self.fmi_version = self.fmu_wrapper.fmi_version
+        self.unzipdir = self.fmu_wrapper.unzipdir
+        self.fmu = self.fmu_wrapper.fmu
+        self._input_refs = self.fmu_wrapper.input_refs
+        self._output_refs = self.fmu_wrapper.output_refs
+
+        # Extract metadata
         self._extract_fmu_metadata()
-        
-        # Use provided dt or fall back to FMU default
+
+        # Determine step size
         if dt is None:
             if self.default_step_size is not None:
                 self.dt = self.default_step_size
@@ -113,58 +85,24 @@ class CoSimulationFMU(Block):
         else:
             self.dt = dt
 
-        # Get input and output variable references
-        self._input_refs = {}
-        self._output_refs = {}
-
-        for variable in self.model_description.modelVariables:
-            if variable.causality == 'input':
-                self._input_refs[variable.name] = variable.valueReference
-                self._port_map_in[variable.name] = len(self._input_refs) - 1
-            elif variable.causality == 'output':
-                self._output_refs[variable.name] = variable.valueReference
-                self._port_map_out[variable.name] = len(self._output_refs) - 1
+        # Build port maps from FMU variables
+        self._port_map_in = {name: idx for idx, name in enumerate(self.fmu_wrapper.input_refs.keys())}
+        self._port_map_out = {name: idx for idx, name in enumerate(self.fmu_wrapper.output_refs.keys())}
 
         # Initialize base class with proper port configuration
         super().__init__()
 
-        # Instantiate FMU based on version
-        if self.fmi_version.startswith('2.'):
-            self.fmu = FMU2Slave(
-                guid=self.model_description.guid,
-                unzipDirectory=self.unzipdir,
-                modelIdentifier=self.model_description.coSimulation.modelIdentifier,
-                instanceName=self.instance_name
-            )
-        elif self.fmi_version.startswith('3.'):
-            self.fmu = FMU3Slave(
-                guid=self.model_description.guid,
-                unzipDirectory=self.unzipdir,
-                modelIdentifier=self.model_description.coSimulation.modelIdentifier,
-                instanceName=self.instance_name
-            )
-        else:
-            raise ValueError(f"Unsupported FMI version: {self.fmi_version}")
-
-        # Setup experiment
-        self.fmu.instantiate()
-        
-        # FMI 3.0 has different initialization sequence
-        if self.fmi_version.startswith('3.'):
-            self.fmu.enterInitializationMode(
-                tolerance=None,
-                startTime=0.0,
-                stopTime=None
-            )
-        else:
-            self.fmu.setupExperiment(startTime=0.0)
-            self.fmu.enterInitializationMode()
+        # Initialize FMU
+        self.fmu_wrapper.instantiate()
+        self.fmu_wrapper.setup_experiment(start_time=0.0)
+        self.fmu_wrapper.enter_initialization_mode()
 
         # Set start values
-        self._set_start_values()
+        for name, value in self.start_values.items():
+            self.fmu_wrapper.set_variable(name, value)
 
         # Exit initialization mode
-        self.fmu.exitInitializationMode()
+        self.fmu_wrapper.exit_initialization_mode()
 
         # Internal scheduled event function
         self.events = [
@@ -177,34 +115,25 @@ class CoSimulationFMU(Block):
 
         # Read initial outputs
         self._update_outputs_from_fmu()
-        
+
 
     def _extract_fmu_metadata(self):
         """Extract metadata and capabilities from FMU."""
-        
-        cs = self.model_description.coSimulation
-        
+
+        md = self.fmu_wrapper.model_description
+        cs = md.coSimulation
+
         if cs is None:
             raise ValueError("FMU does not support Co-Simulation")
-        
-        # Extract capabilities (consistent across FMI 2.0 and 3.0)
+
+        # Extract capabilities
         self.can_interpolate_inputs = getattr(cs, 'canInterpolateInputs', False)
         self.can_handle_variable_step = getattr(cs, 'canHandleVariableCommunicationStepSize', False)
         self.max_output_derivative_order = getattr(cs, 'maxOutputDerivativeOrder', 0)
-        
-        # FMI 3.0 specific capabilities
-        if self.fmi_version.startswith('3.'):
-            self.can_return_early = getattr(cs, 'canReturnEarlyAfterIntermediateUpdate', False)
-            self.has_event_mode = getattr(cs, 'hasEventMode', False)
-            self.recommended_intermediate_input_smoothness = getattr(cs, 'recommendedIntermediateInputSmoothness', 0)
-        else:
-            self.can_return_early = False
-            self.has_event_mode = False
-            self.recommended_intermediate_input_smoothness = 0
-        
+
         # Extract default experiment settings
-        default_experiment = self.model_description.defaultExperiment
-        
+        default_experiment = md.defaultExperiment
+
         if default_experiment is not None:
             self.default_start_time = getattr(default_experiment, 'startTime', 0.0)
             self.default_stop_time = getattr(default_experiment, 'stopTime', None)
@@ -215,54 +144,45 @@ class CoSimulationFMU(Block):
             self.default_stop_time = None
             self.default_step_size = None
             self.default_tolerance = None
-        
+
         # Model metadata
-        self.model_name = self.model_description.modelName
-        self.generation_tool = getattr(self.model_description, 'generationTool', 'Unknown')
-        self.generation_date = getattr(self.model_description, 'generationDateAndTime', 'Unknown')
-        self.description = getattr(self.model_description, 'description', '')
-        self.author = getattr(self.model_description, 'author', 'Unknown')
-        self.version = getattr(self.model_description, 'version', 'Unknown')
-
-
-    def _set_start_values(self):
-        """Set initial values for FMU variables."""
-        for name, value in self.start_values.items():
-            for variable in self.model_description.modelVariables:
-                if variable.name == name:
-                    if variable.type in ['Real', 'Float64', 'Float32']:  # FMI 3.0 uses Float64/Float32
-                        self.fmu.setReal([variable.valueReference], [value])
-                    elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
-                        self.fmu.setInteger([variable.valueReference], [int(value)])
-                    elif variable.type == 'Boolean':
-                        self.fmu.setBoolean([variable.valueReference], [bool(value)])
+        self.model_name = md.modelName
+        self.generation_tool = getattr(md, 'generationTool', 'Unknown')
+        self.generation_date = getattr(md, 'generationDateAndTime', 'Unknown')
+        self.description = getattr(md, 'description', '')
+        self.author = getattr(md, 'author', 'Unknown')
+        self.version = getattr(md, 'version', 'Unknown')
 
 
     def _step_fmu(self, t):
         """Perform one FMU co-simulation step"""
-        self._update_fmu_from_inputs()    
+        self._update_fmu_from_inputs()
 
         # Perform co-simulation step
-        self.fmu.doStep(
-            currentCommunicationPoint=t, 
-            communicationStepSize=self.dt
-        )  
+        result = self.fmu_wrapper.do_step(
+            current_time=t,
+            step_size=self.dt
+        )
+
+        # Handle FMI 3.0 specific results
+        if result.terminate_simulation:
+            raise RuntimeError("FMU requested simulation termination")
 
         self._update_outputs_from_fmu()
 
 
     def _update_fmu_from_inputs(self):
         """Read block inputs and update FMU inputs."""
-        if len(self._input_refs) > 0:
-            input_vrefs = list(self._input_refs.values())
-            self.fmu.setReal(input_vrefs, self.inputs.to_array())
+        if len(self.fmu_wrapper.input_refs) > 0:
+            input_vrefs = list(self.fmu_wrapper.input_refs.values())
+            self.fmu_wrapper.set_real(input_vrefs, self.inputs.to_array())
 
 
     def _update_outputs_from_fmu(self):
         """Read outputs from FMU and update block outputs."""
-        if len(self._output_refs) > 0:
-            output_vrefs = list(self._output_refs.values())
-            self.outputs.update_from_array(self.fmu.getReal(output_vrefs))
+        if len(self.fmu_wrapper.output_refs) > 0:
+            output_vrefs = list(self.fmu_wrapper.output_refs.values())
+            self.outputs.update_from_array(self.fmu_wrapper.get_real(output_vrefs))
 
 
     def update(self, t):
@@ -275,18 +195,9 @@ class CoSimulationFMU(Block):
     def reset(self):
         """Reset the FMU instance."""
         super().reset()
-        self.fmu.reset()
-        
-        if self.fmi_version.startswith('3.'):
-            self.fmu.enterInitializationMode(
-                tolerance=None,
-                startTime=0.0,
-                stopTime=None
-            )
-        else:
-            self.fmu.enterInitializationMode()
-            
-        self.fmu.exitInitializationMode()
+        self.fmu_wrapper.reset()
+        self.fmu_wrapper.enter_initialization_mode()
+        self.fmu_wrapper.exit_initialization_mode()
         self._update_outputs_from_fmu()
 
 
@@ -298,8 +209,8 @@ class CoSimulationFMU(Block):
     def __del__(self):
         """Cleanup FMU resources."""
         try:
-            self.fmu.terminate()
-            self.fmu.freeInstance()
+            self.fmu_wrapper.terminate()
+            self.fmu_wrapper.free_instance()
         except:
             pass
 
@@ -327,26 +238,8 @@ class ModelExchangeFMU(DynamicalSystem):
 
     Attributes
     ----------
-    fmu_path : str
-        path to the FMU file
-    instance_name : str
-        name of the FMU instance
-    start_values : dict
-        initial values for FMU variables
-    model_description : ModelDescription
-        FMI model description from FMPy
-    fmu : FMU2Model or FMU3Model
-        FMPy FMU instance for model exchange
-    fmi_version : str
-        FMI version ('2.0' or '3.0')
-    _input_refs : dict
-        reference map for input variables
-    _output_refs : dict
-        reference map for output variables
-    n_states : int
-        number of continuous states
-    n_event_indicators : int
-        number of event indicators
+    fmu_wrapper : FMUWrapper
+        version-agnostic FMU wrapper instance
     time_event : ScheduleList or None
         dynamic time event for FMU-scheduled events
     """
@@ -362,112 +255,70 @@ class ModelExchangeFMU(DynamicalSystem):
     def __init__(self, fmu_path, instance_name="fmu_instance", start_values=None,
                  tolerance=1e-10, verbose=False):
 
-        # Import FMPy here to avoid requiring it as a dependency if not used
-        try:
-            from fmpy import read_model_description, extract
-            from fmpy.fmi2 import FMU2Model
-            from fmpy.fmi3 import FMU3Model
-        except ImportError:
-            raise ImportError("FMPy is required for FMU blocks. Install with: pip install fmpy")
-
         self.fmu_path = fmu_path
         self.instance_name = instance_name
-        self.start_values = start_values if start_values is not None else {}
         self.verbose = verbose
         self.tolerance = tolerance
+        self.start_values = start_values if start_values is not None else {}
 
-        # Read model description
-        self.model_description = read_model_description(fmu_path)
+        # Create FMU wrapper
+        self.fmu_wrapper = FMUWrapper(fmu_path, instance_name, mode='model_exchange')
 
-        # Detect FMI version
-        self.fmi_version = self.model_description.fmiVersion
+        # Expose commonly used attributes for backward compatibility
+        self.model_description = self.fmu_wrapper.model_description
+        self.fmi_version = self.fmu_wrapper.fmi_version
+        self.unzipdir = self.fmu_wrapper.unzipdir
+        self.fmu = self.fmu_wrapper.fmu
+        self.n_states = self.fmu_wrapper.n_states
+        self.n_event_indicators = self.fmu_wrapper.n_event_indicators
+        self._input_refs = self.fmu_wrapper.input_refs
+        self._output_refs = self.fmu_wrapper.output_refs
 
-        # Extract FMU
-        self.unzipdir = extract(fmu_path)
-
-        # Extract metadata and capabilities
+        # Extract metadata
         self._extract_fmu_metadata()
 
-        # Get input and output variable references
-        self._input_refs = {}
-        self._output_refs = {}
-
-        for variable in self.model_description.modelVariables:
-            if variable.causality == 'input':
-                self._input_refs[variable.name] = variable.valueReference
-                self._port_map_in[variable.name] = len(self._input_refs) - 1
-            elif variable.causality == 'output':
-                self._output_refs[variable.name] = variable.valueReference
-                self._port_map_out[variable.name] = len(self._output_refs) - 1
-
-        # Get continuous states and derivatives
-        self.n_states = self.model_description.numberOfContinuousStates
-        self.n_event_indicators = self.model_description.numberOfEventIndicators
-
-        # Instantiate FMU based on version
-        if self.fmi_version.startswith('2.'):
-            self.fmu = FMU2Model(
-                guid=self.model_description.guid,
-                unzipDirectory=self.unzipdir,
-                modelIdentifier=self.model_description.modelExchange.modelIdentifier,
-                instanceName=self.instance_name
-            )
-        elif self.fmi_version.startswith('3.'):
-            self.fmu = FMU3Model(
-                guid=self.model_description.guid,
-                unzipDirectory=self.unzipdir,
-                modelIdentifier=self.model_description.modelExchange.modelIdentifier,
-                instanceName=self.instance_name
-            )
-        else:
-            raise ValueError(f"Unsupported FMI version: {self.fmi_version}")
+        # Build port maps from FMU variables
+        self._port_map_in = {name: idx for idx, name in enumerate(self.fmu_wrapper.input_refs.keys())}
+        self._port_map_out = {name: idx for idx, name in enumerate(self.fmu_wrapper.output_refs.keys())}
 
         # Setup FMU
-        self.fmu.instantiate()
-
-        # FMI 3.0 has different initialization sequence
-        if self.fmi_version.startswith('3.'):
-            self.fmu.enterInitializationMode(
-                tolerance=self.tolerance,
-                startTime=0.0,
-                stopTime=None
-            )
-        else:
-            self.fmu.setupExperiment(tolerance=self.tolerance, startTime=0.0)
-            self.fmu.enterInitializationMode()
+        self.fmu_wrapper.instantiate()
+        self.fmu_wrapper.setup_experiment(tolerance=self.tolerance, start_time=0.0)
+        self.fmu_wrapper.enter_initialization_mode()
 
         # Set start values
-        self._set_start_values()
+        for name, value in self.start_values.items():
+            self.fmu_wrapper.set_variable(name, value)
 
         # Exit initialization mode and check for initial events
-        event_info = self.fmu.exitInitializationMode()
+        event_info = self.fmu_wrapper.exit_initialization_mode()
 
         # Store initial time event if defined
         self._initial_time_event = (
-            event_info.nextEventTime
-            if event_info and getattr(event_info, 'nextEventTimeDefined', False)
+            event_info.next_event_time
+            if event_info and event_info.next_event_time_defined
             else None
         )
 
         # Enter continuous time mode after initialization
-        self.fmu.enterContinuousTimeMode()
+        self.fmu_wrapper.enter_continuous_time_mode()
 
         # Get initial continuous states
-        initial_states = self._get_continuous_states()
+        initial_states = self.fmu_wrapper.get_continuous_states()
 
         # Initialize parent DynamicalSystem with FMU dynamics
         super().__init__(
             func_dyn=self._get_derivatives,
             func_alg=self._get_outputs,
             initial_value=initial_states,
-            jac_dyn=None  # Could add Jacobian support later via directional derivatives
+            jac_dyn=None
         )
 
-        # Initialize time event manager (will be populated dynamically)
+        # Initialize time event manager
         self.time_event = None
 
         # Create state event (zero-crossing) events for each event indicator
-        for i in range(self.n_event_indicators):
+        for i in range(self.fmu_wrapper.n_event_indicators):
             event = ZeroCrossing(
                 func_evt=lambda t, idx=i: self._get_event_indicator(idx),
                 func_act=self._handle_event,
@@ -483,7 +334,8 @@ class ModelExchangeFMU(DynamicalSystem):
     def _extract_fmu_metadata(self):
         """Extract metadata and capabilities from FMU."""
 
-        me = self.model_description.modelExchange
+        md = self.fmu_wrapper.model_description
+        me = md.modelExchange
 
         if me is None:
             raise ValueError("FMU does not support Model Exchange")
@@ -493,88 +345,12 @@ class ModelExchangeFMU(DynamicalSystem):
         self.completed_integrator_step_not_needed = getattr(me, 'completedIntegratorStepNotNeeded', False)
 
         # Model metadata
-        self.model_name = self.model_description.modelName
-        self.generation_tool = getattr(self.model_description, 'generationTool', 'Unknown')
-        self.generation_date = getattr(self.model_description, 'generationDateAndTime', 'Unknown')
-        self.description = getattr(self.model_description, 'description', '')
-        self.author = getattr(self.model_description, 'author', 'Unknown')
-        self.version = getattr(self.model_description, 'version', 'Unknown')
-
-
-    def _set_start_values(self):
-        """Set initial values for FMU variables."""
-        if not self.start_values:
-            return
-
-        # Build variable lookup dict for efficient access
-        var_map = {v.name: v for v in self.model_description.modelVariables}
-
-        for name, value in self.start_values.items():
-            variable = var_map.get(name)
-            if variable is None:
-                continue
-
-            vr = variable.valueReference
-            if self.fmi_version.startswith('2'):
-                # FMI 2.0 API
-                if variable.type in ['Real', 'Float64', 'Float32']:
-                    self.fmu.setReal([vr], [value])
-                elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
-                    self.fmu.setInteger([vr], [int(value)])
-                elif variable.type == 'Boolean':
-                    self.fmu.setBoolean([vr], [bool(value)])
-            else:
-                # FMI 3.0 API (FMPy provides simplified wrappers)
-                if variable.type in ['Real', 'Float64', 'Float32']:
-                    self.fmu.setFloat64([vr], [value])
-                elif variable.type in ['Integer', 'Int64', 'Int32', 'Int16', 'Int8']:
-                    self.fmu.setInt64([vr], [int(value)])
-                elif variable.type == 'Boolean':
-                    self.fmu.setBoolean([vr], [bool(value)])
-
-
-    def _get_continuous_states(self):
-        """Get continuous states from FMU (handles FMI 2.0 and 3.0 API differences).
-
-        Returns
-        -------
-        states : array
-            continuous state vector
-        """
-        if self.n_states == 0:
-            return np.array([])
-
-        import ctypes
-        states = (ctypes.c_double * self.n_states)()
-        self.fmu.getContinuousStates(states, self.n_states)
-        return np.array(states)
-
-
-    def _set_fmu_state(self, x, u, t):
-        """Set FMU state (time, continuous states, inputs).
-
-        Parameters
-        ----------
-        x : array
-            continuous state vector
-        u : array
-            input vector
-        t : float
-            current time
-        """
-        self.fmu.setTime(t)
-
-        if self.n_states > 0:
-            import ctypes
-            x_ctypes = (ctypes.c_double * self.n_states)(*x)
-            self.fmu.setContinuousStates(x_ctypes, self.n_states)
-
-        if self._input_refs:
-            input_vrefs = list(self._input_refs.values())
-            if self.fmi_version.startswith('2'):
-                self.fmu.setReal(input_vrefs, u)
-            else:  # FMI 3.0
-                self.fmu.setFloat64(input_vrefs, u)
+        self.model_name = md.modelName
+        self.generation_tool = getattr(md, 'generationTool', 'Unknown')
+        self.generation_date = getattr(md, 'generationDateAndTime', 'Unknown')
+        self.description = getattr(md, 'description', '')
+        self.author = getattr(md, 'author', 'Unknown')
+        self.version = getattr(md, 'version', 'Unknown')
 
 
     def _get_derivatives(self, x, u, t):
@@ -594,17 +370,18 @@ class ModelExchangeFMU(DynamicalSystem):
         dx : array
             state derivatives
         """
-        if self.n_states == 0:
+        if self.fmu_wrapper.n_states == 0:
             return np.array([])
 
-        self._set_fmu_state(x, u, t)
-        import ctypes
-        derivatives = (ctypes.c_double * self.n_states)()
-        if self.fmi_version.startswith('2'):
-            self.fmu.getDerivatives(derivatives, self.n_states)
-        else:  # FMI 3.0
-            self.fmu.getContinuousStateDerivatives(derivatives, self.n_states)
-        return np.array(derivatives)
+        # Set FMU state
+        self.fmu_wrapper.set_time(t)
+        self.fmu_wrapper.set_continuous_states(x)
+
+        if len(self.fmu_wrapper.input_refs) > 0:
+            input_vrefs = list(self.fmu_wrapper.input_refs.values())
+            self.fmu_wrapper.set_real(input_vrefs, u)
+
+        return self.fmu_wrapper.get_derivatives()
 
 
     def _get_outputs(self, x, u, t):
@@ -624,22 +401,23 @@ class ModelExchangeFMU(DynamicalSystem):
         y : array
             output vector
         """
-        self._set_fmu_state(x, u, t)
-        if not self._output_refs:
+        # Set FMU state
+        self.fmu_wrapper.set_time(t)
+        self.fmu_wrapper.set_continuous_states(x)
+
+        if len(self.fmu_wrapper.input_refs) > 0:
+            input_vrefs = list(self.fmu_wrapper.input_refs.values())
+            self.fmu_wrapper.set_real(input_vrefs, u)
+
+        if len(self.fmu_wrapper.output_refs) == 0:
             return np.array([])
 
-        output_vrefs = list(self._output_refs.values())
-        if self.fmi_version.startswith('2'):
-            return np.array(self.fmu.getReal(output_vrefs))
-        else:  # FMI 3.0
-            return np.array(self.fmu.getFloat64(output_vrefs))
+        output_vrefs = list(self.fmu_wrapper.output_refs.values())
+        return self.fmu_wrapper.get_real(output_vrefs)
 
 
     def sample(self, t, dt):
         """Sample block after successful timestep and handle FMU step completion events.
-
-        This is called by the simulation after a complete timestep (all RK stages finished).
-        It's the proper place to call completedIntegratorStep() per FMI standard.
 
         Parameters
         ----------
@@ -648,25 +426,20 @@ class ModelExchangeFMU(DynamicalSystem):
         dt : float
             integration timestep
         """
-        # Call parent's sample method (if any)
         super().sample(t, dt)
 
         # If FMU requires completedIntegratorStep, call it after successful step
         if not self.completed_integrator_step_not_needed:
-            # Notify FMU that integration step completed
-            enter_event_mode, terminate_simulation = self.fmu.completedIntegratorStep()
+            enter_event_mode, terminate_simulation = self.fmu_wrapper.completed_integrator_step()
 
             if terminate_simulation:
                 if self.verbose:
                     print("FMU requested termination in completedIntegratorStep")
                 raise RuntimeError("FMU requested simulation termination")
 
-            # If FMU signals a step event
             if enter_event_mode:
                 if self.verbose:
                     print(f"Step completion event at t={t}")
-
-                # Handle the step event
                 self._handle_event(t)
 
 
@@ -683,9 +456,7 @@ class ModelExchangeFMU(DynamicalSystem):
         float
             event indicator value
         """
-        import ctypes
-        indicators = (ctypes.c_double * self.n_event_indicators)()
-        self.fmu.getEventIndicators(indicators, self.n_event_indicators)
+        indicators = self.fmu_wrapper.get_event_indicators()
         return indicators[idx]
 
 
@@ -701,83 +472,37 @@ class ModelExchangeFMU(DynamicalSystem):
             print(f"FMU event detected at t={t}")
 
         # Enter event mode before event iteration
-        self.fmu.enterEventMode()
+        self.fmu_wrapper.enter_event_mode()
 
         # Perform event update iteration until discrete states stabilize
-        if self.fmi_version.startswith('2'):
-            # FMI 2.0 API - returns tuple
-            # (newDiscreteStatesNeeded, terminateSimulation, nominalsOfContinuousStatesChanged,
-            #  valuesOfContinuousStatesChanged, nextEventTimeDefined, nextEventTime)
-            while True:
-                result = self.fmu.newDiscreteStates()
-                newDiscreteStatesNeeded = result[0]
-                terminateSimulation = result[1]
-                valuesOfContinuousStatesChanged = result[3]
-                nextEventTimeDefined = result[4]
-                nextEventTime = result[5]
+        while True:
+            event_info = self.fmu_wrapper.update_discrete_states()
 
-                # Check if simulation should terminate
-                if terminateSimulation:
-                    if self.verbose:
-                        print("FMU requested simulation termination")
-                    raise RuntimeError("FMU requested simulation termination")
+            # Check if simulation should terminate
+            if event_info.terminate_simulation:
+                if self.verbose:
+                    print("FMU requested simulation termination")
+                raise RuntimeError("FMU requested simulation termination")
 
-                # Break if no more discrete state updates needed
-                if not newDiscreteStatesNeeded:
-                    break
-
-            # Create event_info-like object for unified handling below
-            class EventInfo:
-                pass
-            event_info = EventInfo()
-            event_info.valuesOfContinuousStatesChanged = valuesOfContinuousStatesChanged
-            event_info.nextEventTimeDefined = nextEventTimeDefined
-            event_info.nextEventTime = nextEventTime
-        else:
-            # FMI 3.0 API - returns tuple
-            # (discreteStatesNeedUpdate, terminateSimulation, nominalsChanged,
-            #  valuesChanged, nextEventTimeDefined, nextEventTime)
-            while True:
-                result = self.fmu.updateDiscreteStates()
-                discreteStatesNeedUpdate = result[0]
-                terminateSimulation = result[1]
-                valuesOfContinuousStatesChanged = result[3]
-                nextEventTimeDefined = result[4]
-                nextEventTime = result[5]
-
-                # Check if simulation should terminate
-                if terminateSimulation:
-                    if self.verbose:
-                        print("FMU requested simulation termination")
-                    raise RuntimeError("FMU requested simulation termination")
-
-                # Break if no more discrete state updates needed
-                if not discreteStatesNeedUpdate:
-                    break
-
-            # Create event_info-like object for unified handling below
-            class EventInfo:
-                pass
-            event_info = EventInfo()
-            event_info.valuesOfContinuousStatesChanged = valuesOfContinuousStatesChanged
-            event_info.nextEventTimeDefined = nextEventTimeDefined
-            event_info.nextEventTime = nextEventTime
+            # Break if no more discrete state updates needed
+            if not event_info.discrete_states_need_update:
+                break
 
         # Re-enter continuous time mode after event handling
-        self.fmu.enterContinuousTimeMode()
+        self.fmu_wrapper.enter_continuous_time_mode()
 
         # Check if continuous states changed during event
-        if event_info.valuesOfContinuousStatesChanged:
-            x_new = self._get_continuous_states()
+        if event_info.values_changed:
+            x_new = self.fmu_wrapper.get_continuous_states()
             self.engine.set(x_new)
             if self.verbose:
                 print(f"Continuous states updated after event: {x_new}")
 
         # Update time events if FMU scheduled new ones
-        if event_info.nextEventTimeDefined:
-            self._update_time_events(event_info.nextEventTime)
+        if event_info.next_event_time_defined:
+            self._update_time_events(event_info.next_event_time)
             if self.verbose:
-                print(f"Next time event scheduled at t={event_info.nextEventTime}")
+                print(f"Next time event scheduled at t={event_info.next_event_time}")
 
 
     def _update_time_events(self, next_time):
@@ -805,25 +530,20 @@ class ModelExchangeFMU(DynamicalSystem):
     def reset(self):
         """Reset the FMU instance."""
         super().reset()
-        self.fmu.reset()
+        self.fmu_wrapper.reset()
 
         # Re-initialize FMU
-        if self.fmi_version.startswith('3.'):
-            self.fmu.enterInitializationMode(
-                tolerance=self.tolerance,
-                startTime=0.0,
-                stopTime=None
-            )
-        else:
-            self.fmu.setupExperiment(tolerance=self.tolerance, startTime=0.0)
-            self.fmu.enterInitializationMode()
+        self.fmu_wrapper.setup_experiment(tolerance=self.tolerance, start_time=0.0)
+        self.fmu_wrapper.enter_initialization_mode()
 
-        self._set_start_values()
-        event_info = self.fmu.exitInitializationMode()
-        self.fmu.enterContinuousTimeMode()
+        for name, value in self.start_values.items():
+            self.fmu_wrapper.set_variable(name, value)
+
+        event_info = self.fmu_wrapper.exit_initialization_mode()
+        self.fmu_wrapper.enter_continuous_time_mode()
 
         # Reset to initial states
-        self.engine.set(self._get_continuous_states())
+        self.engine.set(self.fmu_wrapper.get_continuous_states())
 
         # Reset time events and re-schedule initial event if present
         if self.time_event is not None:
@@ -836,7 +556,7 @@ class ModelExchangeFMU(DynamicalSystem):
     def __del__(self):
         """Cleanup FMU resources."""
         try:
-            self.fmu.terminate()
-            self.fmu.freeInstance()
+            self.fmu_wrapper.terminate()
+            self.fmu_wrapper.free_instance()
         except Exception:
             pass
