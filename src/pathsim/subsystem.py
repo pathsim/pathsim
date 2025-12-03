@@ -61,11 +61,10 @@ class Interface(Block):
         port_map_out : dict[str: int]
             port alias mapping for block outputs
         """
-        self._port_map_in = port_map_in
-        self._port_map_out = port_map_out
 
-        #reinitialize to build registers with mappings
-        self.__init__()
+        #build registers with mappings
+        self.inputs = Register(mapping=port_map_in)
+        self.outputs = Register(mapping=port_map_out)
 
 
 # MAIN SUBSYSTEM CLASS ==================================================================
@@ -203,9 +202,6 @@ class Subsystem(Block):
         #check if interface is defined
         if self.interface is None:
             raise ValueError("Subsystem 'blocks' list needs to contain 'Interface' block!")
-
-        #update port mappings of interface (reverse)
-        self.interface.register_port_map(self._port_map_out, self._port_map_in)
 
         #assemble internal graph
         self._assemble_graph()
