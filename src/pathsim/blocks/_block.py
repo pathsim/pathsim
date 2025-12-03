@@ -72,35 +72,13 @@ class Block(Serializable):
         internal callable operator for algebraic components of block
     op_dyn : DynamicOperator | None
         internal callable operator for dynamic (ODE) components of block
-    _n_in_max : int | None
-        maximum number of allowed input ports, None -> infinite
-    _n_out_max : int | None
-        maximum number of allowed output ports, None -> infinite
-    _port_map_in : dict[str: int]
-        string aliases for input port numbers to be referenced in 
-        connections or for internal use
-    _port_map_out : dict[str: int]
-        string aliases for output port numbers to be referenced in 
-        connections or for internal use
     """
-
-    #number of max input and output ports
-    _n_in_max = None
-    _n_out_max = None
-
-    #maps for input and output port labels to indices
-    _port_map_in = {}
-    _port_map_out = {}
 
     def __init__(self):
 
-        #default register sizes
-        _n_in = max(len(self._port_map_in), 1)
-        _n_out = max(len(self._port_map_out), 1)
-
         #registers to hold input and output values
-        self.inputs = Register(size=_n_in, mapping=self._port_map_in)
-        self.outputs = Register(size=_n_out, mapping=self._port_map_out)
+        self.inputs = Register()
+        self.outputs = Register()
 
         #initialize integration engine as 'None' by default
         self.engine = None

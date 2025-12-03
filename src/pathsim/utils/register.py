@@ -118,9 +118,7 @@ class Register:
         val : float, obj
             value to set at port
         """
-        if key in self._mapping:
-            key = self._mapping[key]
-        max_idx = self._get_max_index(key)
+        max_idx = self._get_max_index(self._map(key))
         self.resize(max_idx + 1)
 
         #convert to scalar if needed to avoid numpy deprecation warning
