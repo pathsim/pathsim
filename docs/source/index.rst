@@ -75,7 +75,7 @@ Get started with PathSim in three simple steps:
 .. grid:: 3
    :gutter: 2
 
-   .. grid-item-card:: 1️⃣ Install
+   .. grid-item-card:: Install
 
       Install PathSim with pip:
 
@@ -83,11 +83,17 @@ Get started with PathSim in three simple steps:
 
          pip install pathsim
 
-   .. grid-item-card:: 2️⃣ Build
+      or conda:
+
+      .. code-block:: bash
+
+         conda install conda-forge::pathsim
+
+   .. grid-item-card:: Build
 
       Create a system using blocks and connections
 
-   .. grid-item-card:: 3️⃣ Run
+   .. grid-item-card:: Run
 
       Execute the simulation and visualize results
 
@@ -96,7 +102,7 @@ Get started with PathSim in three simple steps:
 Example: Integrating a Cosine
 ------------------------------
 
-Here's a simple interactive example that demonstrates PathSim basics. Click to view the full notebook with live code execution:
+Here's a simple interactive example that demonstrates PathSim basics. Click to view the full notebook:
 
 .. grid:: 1
 
@@ -105,7 +111,7 @@ Here's a simple interactive example that demonstrates PathSim basics. Click to v
       :link-type: doc
       :text-align: center
 
-      Interactive notebook demonstrating basic PathSim usage - integrating a cosine function to produce a sine wave.
+      PathSim usage - integrating a cosine function to produce a sine wave.
 
       .. image:: figures/sin_cos_blockdiagram_g.png
          :width: 400

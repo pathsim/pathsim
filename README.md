@@ -1,7 +1,7 @@
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/pathsim/pathsim/master/docs/source/logos/pathsim_logo.png" width="300" alt="Pathsim Logo" />
+  <img src="https://raw.githubusercontent.com/pathsim/pathsim/master/docs/source/logos/pathsim_logo.png" width="300" alt="PathSim Logo" />
 </p>
 
 ------------
@@ -56,6 +56,13 @@ The latest release version of PathSim is available on [PyPi](https://pypi.org/pr
 ```console
 pip install pathsim
 ```
+
+Additionally, PathSim is available on [conda-forge](https://anaconda.org/channels/conda-forge/packages/pathsim/overview) and installable via conda:
+
+```console
+conda install conda-forge::pathsim
+```
+
 
 ## Example - Harmonic Oscillator
 
