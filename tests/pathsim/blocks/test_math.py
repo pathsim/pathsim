@@ -451,6 +451,99 @@ class TestClip(unittest.TestCase):
         for t in range(10): self.assertTrue(np.allclose(*E.check_MIMO(t)))
 
 
+
+class TestMatrix(unittest.TestCase):
+    """
+    Test the implementation of the 'Matrix' block class
+    """
+
+    def test_init_default(self):
+        """test default initialization with identity matrix"""
+        B = Matrix()
+        self.assertEqual(len(B.inputs), 1)
+        self.assertEqual(len(B.outputs), 1)
+        self.assertTrue(np.allclose(B.A, np.eye(1)))
+
+    def test_init_custom_square(self):
+        """test initialization with custom square matrix"""
+        A = np.array([[1, 2], [3, 4]])
+        B = Matrix(A=A)
+        self.assertEqual(len(B.inputs), 2)
+        self.assertEqual(len(B.outputs), 2)
+        self.assertTrue(np.allclose(B.A, A))
+
+    def test_init_custom_rectangular(self):
+        """test initialization with non-square matrix"""
+        A = np.array([[1, 2, 3], [4, 5, 6]])  # 2x3 matrix
+        B = Matrix(A=A)
+        self.assertEqual(len(B.inputs), 3)
+        self.assertEqual(len(B.outputs), 2)
+
+    def test_init_invalid_dimension(self):
+        """test that 1D array raises error"""
+        with self.assertRaises(ValueError):
+            Matrix(A=np.array([1, 2, 3]))
+
+    def test_init_invalid_dimension_3d(self):
+        """test that 3D array raises error"""
+        with self.assertRaises(ValueError):
+            Matrix(A=np.ones((2, 2, 2)))
+
+    def test_embedding_identity(self):
+        """test algebraic components with identity matrix"""
+        B = Matrix(A=np.eye(2))
+
+        def src(t): return t + 1, 2*t + 1
+        def ref(t): return np.array([t + 1, 2*t + 1])
+        E = Embedding(B, src, ref)
+
+        for t in range(10):
+            self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+    def test_embedding_square_matrix(self):
+        """test algebraic components with square matrix"""
+        A = np.array([[2, 1], [0, 3]])
+        B = Matrix(A=A)
+
+        def src(t): return t + 1, t + 2
+        def ref(t):
+            u = np.array([t + 1, t + 2])
+            return np.dot(A, u)
+        E = Embedding(B, src, ref)
+
+        for t in range(10):
+            self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+    def test_embedding_rectangular_matrix(self):
+        """test algebraic components with non-square matrix"""
+        A = np.array([[1, 2, 3], [4, 5, 6]])  # 2x3 matrix: 3 inputs, 2 outputs
+        B = Matrix(A=A)
+
+        def src(t): return t, t + 1, t + 2
+        def ref(t):
+            u = np.array([t, t + 1, t + 2])
+            return np.dot(A, u)
+        E = Embedding(B, src, ref)
+
+        for t in range(10):
+            self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+    def test_embedding_single_output(self):
+        """test with row vector matrix (multiple inputs, single output)"""
+        A = np.array([[1, 2, 3]])  # 1x3 matrix
+        B = Matrix(A=A)
+
+        def src(t): return t, 2*t, 3*t
+        def ref(t):
+            u = np.array([t, 2*t, 3*t])
+            return np.dot(A, u)
+        E = Embedding(B, src, ref)
+
+        for t in range(10):
+            self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+
+
 # RUN TESTS LOCALLY ====================================================================
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -13,6 +13,7 @@ import numpy as np
 
 from ._block import Block
 
+from ..utils.register import Register
 from ..optim.operator import Operator
 
 
@@ -532,4 +533,45 @@ class Clip(Math):
         self.op_alg = Operator(
             func=lambda x: np.clip(x, self.min_val, self.max_val), 
             jac=_clip_jac
+            )
+
+
+class Matrix(Math):
+    """Linear matrix operation (matrix-vector product).
+
+    This block supports vector inputs. This is the operation it does:
+        
+    .. math::
+        
+        \\vec{y} = \\mathbf{A} \\vec{u} 
+
+    Parameters
+    ----------
+    A : np.ndarray
+        matrix, 2d array with dim=2
+        
+    Attributes
+    ----------
+    op_alg : Operator
+        internal algebraic operator
+    """
+
+    def __init__(self, A=np.eye(1)):
+        super().__init__()
+
+        # check matrix dimension and shape
+        if not A.ndim == 2:
+            raise ValueError("'A' must be dim 2")
+        n, m = A.shape
+
+        # initialize io registers
+        self.inputs = Register(size=m)
+        self.outputs = Register(size=n)
+
+        # block matrix
+        self.A = A
+
+        self.op_alg = Operator(
+            func=lambda u: np.dot(self.A, u), 
+            jac=lambda u: np.dot(self.A, u)
             )
