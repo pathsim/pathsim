@@ -41,20 +41,20 @@ class ZeroCrossing(Event):
 
     .. code-block:: python
 
-        #define the event function
+        # define the event function
         def evt(t):
-            #here we have a zero-crossing at 't==10'
+            # here we have a zero-crossing at 't==10'
             return t - 10
         
-        #define the action function (callback)
+        # define the action function (callback)
         def act(t):
-            #do something at event resolution
+            # do something at event resolution
             pass
     
-        #initialize the event manager
+        # initialize the event manager
         E = ZeroCrossing(
-            func_evt=evt,  #the event function
-            func_act=act   #the action function
+            func_evt=evt,  # the event function
+            func_act=act   # the action function
             )    
     
     Parameters
@@ -85,30 +85,34 @@ class ZeroCrossing(Event):
             interpolated event location as ratio of timestep
         """
 
-        #evaluate event function
+        # evaluate event function
         result = self.func_evt(t)
 
-        #are we close to the actual event?
-        close = abs(result) <= self.tolerance
-            
-        #unpack history
+        # unpack history
         _result, _t = self._history
 
-        #no history -> no zero crossing
+        # exactly hit zero -> quit early
+        if result == 0.0 and _result != 0.0:
+            return True, True, TOLERANCE
+
+        # are we close to the actual event?
+        close = abs(result) <= self.tolerance
+
+        # no history -> no zero crossing
         if _result is None:
             return False, False, 1.0
 
-        #check for zero crossing (sign change)
+        # check for zero crossing (sign change, + to - and - to +) 
         is_event = np.sign(result * _result) < 0 
 
-        #definitely no event detected -> quit early
+        # definitely no event detected -> quit early
         if not is_event:
             return False, False, 1.0
 
-        #linear interpolation to find event time ratio (secant crosses x-axis)
+        # linear interpolation to find event time ratio (secant crosses x-axis)
         ratio = abs(_result) / np.clip(abs(_result - result), TOLERANCE, None)
 
-        #convert to scalar if needed to avoid numpy deprecation warning
+        # convert to scalar if needed to avoid numpy deprecation warning
         if isinstance(ratio, np.ndarray):
             ratio = ratio.item()
 
@@ -139,30 +143,34 @@ class ZeroCrossingUp(Event):
             interpolated event location as ratio of timestep
         """
             
-        #evaluate event function
+        # evaluate event function
         result = self.func_evt(t)
-
-        #are we close to the actual event?
-        close = abs(result) <= self.tolerance
             
-        #unpack history
+        # unpack history
         _result, _t = self._history
+
+        # exactly hit zero -> quit early
+        if result == 0.0 and _result < 0.0:
+            return True, True, TOLERANCE
+
+        # are we close to the actual event?
+        close = abs(result) <= self.tolerance
         
-        #no history -> no zero crossing
+        # no history -> no zero crossing
         if _result is None:
             return False, False, 1.0
 
-        #check for zero crossing (sign change)
+        # check for zero crossing (sign change)
         is_event = np.sign(result * _result) < 0 and result > _result
 
-        #no event detected or wrong direction -> quit early
+        # no event detected or wrong direction -> quit early
         if not is_event or _result >= 0:
             return False, False, 1.0
         
-        #linear interpolation to find event time ratio (secant crosses x-axis)
+        # linear interpolation to find event time ratio (secant crosses x-axis)
         ratio = abs(_result) / np.clip(abs(_result - result), TOLERANCE, None)
 
-        #convert to scalar if needed to avoid numpy deprecation warning
+        # convert to scalar if needed to avoid numpy deprecation warning
         if isinstance(ratio, np.ndarray):
             ratio = ratio.item()
 
@@ -193,30 +201,34 @@ class ZeroCrossingDown(Event):
             interpolated event location as ratio of timestep
         """
         
-        #evaluate event function
+        # evaluate event function
         result = self.func_evt(t)
-        
-        #are we close to the actual event?
-        close = abs(result) <= self.tolerance
             
-        #unpack history
+        # unpack history
         _result, _t = self._history
+        
+        # exactly hit zero -> quit early
+        if result == 0.0 and _result > 0.0:
+            return True, True, TOLERANCE
 
-        #no history -> no zero crossing
+        # are we close to the actual event?
+        close = abs(result) <= self.tolerance
+
+        # no history -> no zero crossing
         if _result is None:
             return False, False, 1.0
 
-        #check for zero crossing (sign change)
+        # check for zero crossing (sign change)
         is_event = np.sign(result * _result) < 0 and result < _result
 
-        #no event detected or wrong direction -> quit early
+        # no event detected or wrong direction -> quit early
         if not is_event or _result <= 0:
             return False, False, 1.0
         
-        #linear interpolation to find event time ratio (secant crosses x-axis)
+        # linear interpolation to find event time ratio (secant crosses x-axis)
         ratio = abs(_result) / np.clip(abs(_result - result), TOLERANCE, None)
 
-        #convert to scalar if needed to avoid numpy deprecation warning
+        # convert to scalar if needed to avoid numpy deprecation warning
         if isinstance(ratio, np.ndarray):
             ratio = ratio.item()
 
