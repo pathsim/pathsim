@@ -48,6 +48,9 @@ class Scope(Block):
     ----------
     recording : dict
         recording, where key is time, and value the recorded values
+    _sample_next_timestep : bool
+        flag to indicate this is a timestep to sample, only used for event based sampling 
+        when `sampling_rate` is provided as an arg
     events : list[Schedule]
         internal scheduled event for periodic input sampling when `sampling_rate` is provided
     """
