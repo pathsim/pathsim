@@ -357,60 +357,6 @@ class Subsystem(Block):
             block.delinearize()
 
 
-    # serialization / deserialization -------------------------------------------------------
-    
-    def to_dict(self):
-        """Custom serialization for Subsystem"""
-        data = super().to_dict()
-        
-        #serialization for internal blocks and interface
-        data["params"]["blocks"] = [block.to_dict() for block in {*self.blocks, self.interface}]
-
-        #serialize connections
-        data["params"]["connections"] = [conn.to_dict() for conn in self.connections]
-        
-        return data
-
-    
-    @classmethod
-    def from_dict(cls, data):
-        """Custom deserialization for Subsystem"""
-        from .connection import Connection
-        
-        #deserialize blocks and create block ID mapping
-        blocks, id_to_block = [], {}
-        for blk_data in data["params"].pop("blocks", []):
-            block = Block.from_dict(blk_data)
-            blocks.append(block)
-            id_to_block[blk_data["id"]] = block
-
-        #deserialize connections
-        connections = []
-        for conn_data in data["params"].pop("connections", []):
-
-            #source data
-            source_block = id_to_block[conn_data["source"]["block"]]
-            source_ports = conn_data["source"]["ports"]
-            source = PortReference(source_block, source_ports)
-            
-            #target data
-            targets = []
-            for trg in conn_data["targets"]:
-                target_block = id_to_block[trg["block"]]
-                target_ports = trg["ports"]
-                targets.append(
-                    PortReference(target_block, target_ports)
-                    )
-            
-            #create the connection
-            connections.append(
-                Connection(source, *targets)
-                )
-        
-        #finally construct the subsystem
-        return cls(blocks, connections)
-        
-
     # methods for discrete event management -------------------------------------------------
 
     @property

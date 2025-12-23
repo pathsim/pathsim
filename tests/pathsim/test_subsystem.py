@@ -322,29 +322,6 @@ class TestSubsystem(unittest.TestCase):
         S.delinearize()
 
 
-    def test_serialization(self):
-        """Test to_dict and from_dict serialization"""
-        from pathsim.blocks import Amplifier, Integrator
-
-        I1 = Interface()
-        B1 = Amplifier(gain=3.0)
-        B2 = Integrator(2.0)
-        C1 = Connection(I1, B1, B2)
-        C2 = Connection(B1, I1)
-        S = Subsystem(blocks=[I1, B1, B2], connections=[C1, C2])
-
-        # Serialize
-        data = S.to_dict()
-        self.assertIn("params", data)
-        self.assertIn("blocks", data["params"])
-        self.assertIn("connections", data["params"])
-
-        # Deserialize
-        S2 = Subsystem.from_dict(data)
-        self.assertEqual(len(S2.blocks), 2)  # B1 and B2 (not counting interface)
-        self.assertEqual(len(S2.connections), 2)
-
-
     def test_events_property(self):
         """Test that events are collected from internal blocks"""
         from pathsim.events import Schedule

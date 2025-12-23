@@ -161,10 +161,10 @@ class Connection:
 
 
     def __str__(self):
-        """String representation of the connection using the 
-        'to_dict' method with readable json formatting
-        """
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        """String representation of the connection"""
+        src = f"{self.source.block}[{self.source.ports}]"
+        trgs = ", ".join(f"{t.block}[{t.ports}]" for t in self.targets)
+        return f"Connection({src} -> {trgs})"
 
 
     def __len__(self):
