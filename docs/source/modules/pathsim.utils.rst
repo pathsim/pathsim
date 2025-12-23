@@ -32,12 +32,6 @@ Helper tools and utility classes for analysis, visualization, and system managem
 
       Dynamic memory-efficient buffers for delay modeling and data storage.
 
-   .. grid-item-card:: Serialization
-      :link: pathsim.utils.serialization
-      :link-type: doc
-
-      Save and load simulation configurations and results.
-
    .. grid-item-card:: Logger
       :link: pathsim.utils.logger
       :link-type: doc
