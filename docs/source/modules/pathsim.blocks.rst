@@ -139,6 +139,12 @@ Controllers and state estimation algorithms.
 
       Signal comparison and threshold detection for event triggering.
 
+   .. grid-item-card:: Relay
+      :link: pathsim.blocks.relay
+      :link-type: doc
+
+      Relay with hysteresis (Schmitt trigger).
+
 ----
 
 Dynamic Systems

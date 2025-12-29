@@ -19,6 +19,7 @@ from .scope import *
 from .delay import *
 from .noise import *
 from .table import *
+from .relay import *
 from .math import *
 from .ctrl import *
 from .lti import *
