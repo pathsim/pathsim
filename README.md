@@ -20,7 +20,7 @@
 
 **PathSim** is a flexible block-based time-domain system simulation framework in Python! It provides a variety of classes that enable modeling and simulation of complex interconnected dynamical systems through Python scripting in the block diagram paradigm.
 
-All of that with minimal dependencies, only `numpy`, `scipy` and `matplotlib` (and `dill` if you want to use serialization)!
+All of that with minimal dependencies, only `numpy`, `scipy` and `matplotlib`!
 
 Key Features:
 
