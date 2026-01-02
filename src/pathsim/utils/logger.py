@@ -6,8 +6,6 @@
 ##              Centralized logging configuration for PathSim package.
 ##          Provides a singleton manager for consistent logging across modules.
 ##
-#                               Milan Rother 2025
-##
 ########################################################################################
 
 # IMPORTS ==============================================================================
@@ -35,11 +33,10 @@ class LoggerManager:
 
     .. code-block:: python
 
-        # Get the singleton instance and configure logging
+        # Create and configure logging in one step
         from pathsim.utils.logger import LoggerManager
 
-        mgr = LoggerManager()
-        mgr.configure(
+        mgr = LoggerManager(
             enabled=True,
             output="simulation.log",  # File path or None for stdout
             level=logging.INFO
@@ -52,6 +49,9 @@ class LoggerManager:
         # Set different log levels for different modules
         mgr.set_level(logging.DEBUG, "progress")
         mgr.set_level(logging.WARNING, "analysis")
+
+        # Reconfigure later if needed
+        mgr.configure(enabled=False)  # Disable logging
 
 
     Notes
@@ -76,18 +76,49 @@ class LoggerManager:
     _instance = None
     _initialized = False
 
-    def __new__(cls):
+    def __new__(cls, enabled=False, output=None, level=logging.INFO,
+                format=None, date_format='%H:%M:%S'):
         """Ensure only one instance exists (singleton pattern)."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
 
-    def __init__(self):
-        """Initialize the logger manager and setup root logger."""
+    def __init__(self, enabled=False, output=None, level=logging.INFO,
+                 format=None, date_format='%H:%M:%S'):
+        """Initialize the logger manager and setup root logger.
+
+        Configuration is applied immediately on first instantiation if enabled=True.
+        Subsequent instantiations return the existing singleton (parameters ignored).
+        Use configure() to change settings after initialization.
+
+        Parameters
+        ----------
+        enabled : bool, optional
+            Whether logging is enabled. Defaults to False.
+        output : str or None, optional
+            Output destination. If string, logs to file. If None, logs to stdout.
+            Defaults to None.
+        level : int, optional
+            Logging level. Defaults to logging.INFO.
+        format : str or None, optional
+            Log message format. Defaults to "%(asctime)s - %(levelname)s - %(message)s".
+        date_format : str or None, optional
+            Date format for timestamps. Defaults to '%H:%M:%S'.
+        """
         if not LoggerManager._initialized:
             self._setup_root_logger()
             LoggerManager._initialized = True
+
+            #apply configuration if enabled
+            if enabled:
+                self.configure(
+                    enabled=True,
+                    output=output,
+                    level=level,
+                    format=format,
+                    date_format=date_format
+                    )
 
 
     def _setup_root_logger(self):
@@ -118,7 +149,8 @@ class LoggerManager:
         self._current_handler = None
 
 
-    def configure(self, enabled=True, output=None, level=logging.INFO, format=None, date_format=None):
+    def configure(self, enabled=True, output=None, level=logging.INFO, 
+                  format=None, date_format=None):
         """Configure the root PathSim logger and all child loggers.
 
         This method sets up the logging system with the specified parameters.

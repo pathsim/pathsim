@@ -220,8 +220,15 @@ class Simulation:
         #flag for setting the simulation active
         self._active = True
 
-        #initialize logging for logging mode
-        self._initialize_logger()
+        #initialize logging 
+        logger_mgr = LoggerManager(
+            enabled=bool(self.log),
+            output=self.log if isinstance(self.log, str) else None,
+            level=logging.INFO,
+            date_format='%H:%M:%S'
+            )
+        self.logger = logger_mgr.get_logger("simulation")
+        self.logger.info(f"LOGGING (log: {self.log})")
 
         #prepare and add blocks (including internal events)
         if blocks is not None:
@@ -295,43 +302,6 @@ class Simulation:
             total_n += n
             total_nx += nx
         return total_n, total_nx
-
-
-    # logger methods --------------------------------------------------------------
-
-    def _initialize_logger(self):
-        """Setup and configure logging using the centralized LoggerManager.
-
-        The logger is configured based on the 'log' parameter which can be:
-        - True: logging enabled to stdout
-        - False: logging disabled
-        - str: logging enabled to file at specified path
-        """
-
-        #get logger manager singleton
-        logger_mgr = LoggerManager()
-
-        #configure based on log parameter
-        if self.log:
-            #determine output destination
-            output = self.log if isinstance(self.log, str) else None
-
-            #configure logger manager with short timestamp
-            logger_mgr.configure(
-                enabled=True,
-                output=output,
-                level=logging.INFO,
-                date_format='%H:%M:%S'
-            )
-        else:
-            #disable logging
-            logger_mgr.configure(enabled=False)
-
-        #get logger for simulation
-        self.logger = logger_mgr.get_logger("simulation")
-
-        #log initialization
-        self.logger.info(f"LOGGING (log: {self.log})")
 
 
     # visualization ---------------------------------------------------------------

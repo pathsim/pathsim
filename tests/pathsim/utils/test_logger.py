@@ -289,6 +289,75 @@ class TestLoggerManager(unittest.TestCase):
         self.assertIsNotNone(warnings_logger)
 
 
+    def test_init_with_enabled(self):
+        """Test initialization with enabled=True configures logging"""
+        mgr = LoggerManager(enabled=True, level=logging.DEBUG)
+
+        # Should be enabled
+        self.assertTrue(mgr.is_enabled())
+
+        # Should have handler
+        self.assertEqual(len(mgr.root_logger.handlers), 1)
+
+        # Level should be DEBUG
+        self.assertEqual(mgr.get_effective_level(), logging.DEBUG)
+
+
+    def test_init_with_file_output(self):
+        """Test initialization with file output"""
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log') as f:
+            log_file = f.name
+
+        try:
+            mgr = LoggerManager(enabled=True, output=log_file, level=logging.INFO)
+
+            # Should be enabled with file handler
+            self.assertTrue(mgr.is_enabled())
+            self.assertEqual(len(mgr.root_logger.handlers), 1)
+            self.assertIsInstance(mgr.root_logger.handlers[0], logging.FileHandler)
+
+            # Test logging
+            logger = mgr.get_logger("test")
+            logger.info("Init test message")
+
+            # Close handler
+            mgr.configure(enabled=False)
+
+            # Verify file has content
+            with open(log_file, 'r') as f:
+                self.assertIn("Init test message", f.read())
+
+        finally:
+            if os.path.exists(log_file):
+                os.remove(log_file)
+
+
+    def test_init_disabled_by_default(self):
+        """Test that LoggerManager() without args is disabled"""
+        mgr = LoggerManager()
+
+        # Should be disabled by default
+        self.assertFalse(mgr.is_enabled())
+
+
+    def test_singleton_ignores_subsequent_params(self):
+        """Test that singleton ignores parameters after first instantiation"""
+        # First call with enabled=True
+        mgr1 = LoggerManager(enabled=True, level=logging.WARNING)
+        self.assertTrue(mgr1.is_enabled())
+        self.assertEqual(mgr1.get_effective_level(), logging.WARNING)
+
+        # Second call with different params - should be ignored
+        mgr2 = LoggerManager(enabled=False, level=logging.DEBUG)
+
+        # Should still be enabled with WARNING level
+        self.assertTrue(mgr2.is_enabled())
+        self.assertEqual(mgr2.get_effective_level(), logging.WARNING)
+
+        # Same instance
+        self.assertIs(mgr1, mgr2)
+
+
 # RUN TESTS LOCALLY ====================================================================
 
 if __name__ == '__main__':
