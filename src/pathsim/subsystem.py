@@ -305,6 +305,14 @@ class Subsystem(Block):
             block.plot(*args, **kwargs)
 
 
+    # extracting data -----------------------------------------------------------------------
+
+    def collect(self):
+        """Aggregate results from internal blocks."""
+        for block in self.blocks:
+            yield from block.collect()
+
+
     # system management ---------------------------------------------------------------------
 
     def reset(self):

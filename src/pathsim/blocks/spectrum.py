@@ -211,6 +211,23 @@ class Spectrum(Block):
         return self.freq, spec/self.time
 
 
+    def collect(self):
+        """Yield (category, id, data) tuples for recording blocks to simplify 
+        global data collection from all recording blocks.
+        """
+        freq, data = self.read()
+        if data is not None:
+            yield (
+                "spectrum", 
+                id(self), 
+                {
+                    "freq": freq,
+                    "data": data,
+                    "labels": self.labels,
+                    }
+                )
+
+
     def solve(self, t, dt):
         """advance solution of implicit update equation of the solver
 

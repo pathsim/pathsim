@@ -418,6 +418,31 @@ class Block:
         pass
 
 
+    # methods for extracting data -------------------------------------------------------
+        
+    def read(self):
+        """Read data from recording blocks.
+        
+        Note
+        ----
+        Not implemented by default, special recording blocks 
+        implement this method.
+        """
+        pass
+
+
+    def collect(self):
+        """Yield (category, id, data) tuples for recording blocks to simplify 
+        global data collection from all recording blocks.
+
+        Note
+        ----
+        Yields an empty generator by default, needs to be implemented by 
+        special recording blocks.
+        """
+        yield from ()
+
+
     # methods for inter-block data transfer ---------------------------------------------
 
     def get_all(self):

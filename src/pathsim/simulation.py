@@ -12,6 +12,7 @@
 
 import numpy as np
 
+import time
 import datetime
 import logging
 
@@ -354,7 +355,7 @@ class Simulation:
         block.set_solver(self.Solver, self.engine, **self.solver_kwargs)
 
         #add to dynamic list if solver was initialized
-        if block.engine and block not in self._blocks_dyn:
+        if block.engine:
             self._blocks_dyn.add(block)
 
         #add to eventful list if internal events
@@ -1459,41 +1460,58 @@ class Simulation:
         return self.timestep(dt, adaptive)
 
 
+    # data extraction -------------------------------------------------------------
+
+    def collect(self):
+        """Collect all current simulation results from the internal 
+        recording blocks
+    
+        Returns
+        -------
+        results : dict
+        """
+        scopes, spectra = {}, {}
+        for block in self.blocks:
+            for _category, _id, _data in block.collect():
+                if _category == "scope":
+                    scopes[_id] = _data
+                elif _category == "spectrum":
+                    spectra[_id] = _data
+        return {"scopes": scopes, "spectra": spectra}
+
+
     # simulation execution --------------------------------------------------------
 
     def stop(self):
-        """Set the flag for active simulation to 'False', intended to be 
-        called from the outside (for example by events) to interrupt the 
+        """Set the flag for active simulation to 'False', intended to be
+        called from the outside (for example by events) to interrupt the
         timestepping loop in 'run'.
         """
         self._active = False
 
 
-    def run(self, duration=10, reset=False, adaptive=True):
-        """Perform multiple simulation timesteps for a given 'duration'.
-        
-        Tracks the total number of block evaluations (proxy for function 
-        calls, although larger, since one function call of the system equation 
-        consists of many block evaluations) and the total number of solver
-        iterations for implicit solvers.
+    def _run_loop(self, duration, reset, adaptive, tracker=None):
+        """Core simulation loop generator that yields after each timestep.
 
-        Additionally the progress of the simulation is tracked by a custom
-        'ProgressTracker' class that is a dynamic generator and interfaces 
-        the logging system.
+        This internal method contains the shared simulation logic used by
+        'run', 'run_streaming', and 'run_realtime'. It handles initialization,
+        timestepping, adaptive rescaling, and progress tracking.
 
         Parameters
         ----------
         duration : float
             simulation time (in time units)
         reset : bool
-            reset the simulation before running (default False)
+            reset the simulation before running
         adaptive : bool
-            use adaptive timesteps if solver is adaptive (default True)
+            use adaptive timesteps if solver is adaptive
+        tracker : ProgressTracker | None
+            optional progress tracker for logging
 
-        Returns
-        -------
-        stats : dict
-            stats of simulation run tracked by the ´ProgressTracker´ 
+        Yields
+        ------
+        step_info : dict
+            dictionary containing 'progress', 'success', and 'dt' for each step
         """
 
         #set simulation active
@@ -1512,9 +1530,8 @@ class Simulation:
         #effective timestep for duration
         _dt = self.dt
 
-        #initial system function evaluation 
+        #initial system function evaluation
         self._update(self.time)
-        initial_evals = 1
 
         #catch and resolve initial events
         for event, *_ in self._detected_events(self.time):
@@ -1523,11 +1540,83 @@ class Simulation:
             event.resolve(self.time)
 
             #evaluate system function again -> propagate event
-            self._update(self.time) 
-            initial_evals += 1
-    
-        #sampling states and inputs at 'self.time == starting_time' 
+            self._update(self.time)
+
+        #sampling states and inputs at 'self.time == starting_time'
         self._sample(self.time, self.dt)
+
+        #main simulation loop
+        while self.time < end_time and self._active:
+
+            #advance the simulation by one (effective) timestep '_dt'
+            success, error_norm, scale, *_ = self.timestep(
+                dt=_dt,
+                adaptive=_adaptive
+                )
+
+            #perform adaptive rescale
+            if _adaptive:
+
+                #if no error estimate and rescale -> back to default timestep
+                if not error_norm and scale == 1:
+                    _dt = self.dt
+
+                #rescale due to error control
+                _dt = scale * _dt
+
+                #estimate time until next event and adjust timestep
+                _dt_evt = self._estimate_events(self.time)
+                if _dt_evt is not None and _dt_evt < _dt:
+                    _dt = _dt_evt
+
+                #rescale if in danger of overshooting 'end_time' at next step
+                if self.time + _dt > end_time:
+                    _dt = end_time - self.time
+
+                #apply bounds to timestep after rescale
+                _dt = np.clip(_dt, self.dt_min, self.dt_max)
+
+            #compute simulation progress
+            progress = np.clip((self.time - start_time) / duration, 0.0, 1.0)
+
+            #update the tracker if provided
+            if tracker:
+                tracker.update(progress, success=success)
+
+            #yield step information
+            yield {'progress': progress, 'success': success, 'dt': _dt}
+
+        #handle interrupt
+        if tracker and not self._active:
+            tracker.interrupt()
+
+
+    def run(self, duration=10, reset=False, adaptive=True):
+        """Perform multiple simulation timesteps for a given 'duration'.
+
+        Tracks the total number of block evaluations (proxy for function
+        calls, although larger, since one function call of the system equation
+        consists of many block evaluations) and the total number of solver
+        iterations for implicit solvers.
+
+        Additionally the progress of the simulation is tracked by a custom
+        'ProgressTracker' class that is a dynamic generator and interfaces
+        the logging system.
+
+        Parameters
+        ----------
+        duration : float
+            simulation time (in time units)
+        reset : bool
+            reset the simulation before running (default False)
+        adaptive : bool
+            use adaptive timesteps if solver is adaptive (default True)
+
+        Returns
+        -------
+        stats : dict
+            stats of simulation run tracked by the 'ProgressTracker'
+        """
 
         #initialize progress tracker
         tracker = ProgressTracker(
@@ -1537,49 +1626,176 @@ class Simulation:
             log=self.log
             )
 
+        #enter tracker context and consume the run loop
+        with tracker:
+            for _ in self._run_loop(duration, reset, adaptive, tracker=tracker):
+                pass
+
+        return tracker.stats
+
+
+    def run_streaming(self, duration=10, reset=False, adaptive=True, tickrate=30):
+        """Perform simulation with streaming output at a fixed wall-clock rate.
+
+        This method runs the simulation as fast as possible while yielding
+        intermediate results at a fixed rate defined by 'tickrate'. Useful
+        for real-time visualization and UI updates.
+
+        The progress is tracked and logged using the 'ProgressTracker' class.
+
+        Parameters
+        ----------
+        duration : float
+            simulation time (in time units)
+        reset : bool
+            reset the simulation before running (default False)
+        adaptive : bool
+            use adaptive timesteps if solver is adaptive (default True)
+        tickrate : float
+            output rate in Hz, i.e., yields per second of wall-clock time
+            (default 30)
+
+        Yields
+        ------
+        result : dict
+            dictionary containing:
+            - 'progress' : float, simulation progress from 0.0 to 1.0
+            - 'sim_time' : float, current simulation time
+            - 'data' : dict, collected data from recording blocks
+        """
+
+        #initialize progress tracker
+        tracker = ProgressTracker(
+            total_duration=duration,
+            description="STREAMING",
+            logger=self.logger,
+            log=self.log
+            )
+
+        #streaming timing setup
+        tick_interval = 1.0 / tickrate
+        last_tick = time.perf_counter()
+
         #enter tracker context
         with tracker:
 
-            #iterate progress tracker generator until 'progress >= 1.0' is reached
-            for _ in tracker:
+            #iterate the core simulation loop
+            for step in self._run_loop(duration, reset, adaptive, tracker=tracker):
 
-                #check for interrupts and exit
-                if not self._active:
-                    tracker.interrupt()
+                #check if enough wall-clock time has passed
+                now = time.perf_counter()
+                if now - last_tick >= tick_interval:
+                    last_tick = now
+
+                    #yield intermediate results
+                    yield {
+                        'progress': step['progress'],
+                        'sim_time': self.time,
+                        'data': self.collect()
+                        }
+
+            #final yield with complete results
+            yield {
+                'progress': 1.0,
+                'sim_time': self.time,
+                'data': self.collect()
+                }
+
+
+    def run_realtime(self, duration=10, reset=False, adaptive=True, tickrate=30, speed=1.0):
+        """Perform simulation paced to wall-clock time.
+
+        This method runs the simulation synchronized to real time, optionally
+        scaled by 'speed'. The simulation advances to match elapsed wall-clock
+        time, yielding results at the rate defined by 'tickrate'.
+
+        Useful for interactive simulations, hardware-in-the-loop testing,
+        or when simulation should match real-world timing.
+
+        The progress is tracked and logged using the 'ProgressTracker' class.
+
+        Parameters
+        ----------
+        duration : float
+            simulation time (in time units)
+        reset : bool
+            reset the simulation before running (default False)
+        adaptive : bool
+            use adaptive timesteps if solver is adaptive (default True)
+        tickrate : float
+            output rate in Hz, i.e., yields per second of wall-clock time
+            (default 30)
+        speed : float
+            time scaling factor where 1.0 is real-time, 2.0 is twice as fast,
+            0.5 is half speed (default 1.0)
+
+        Yields
+        ------
+        result : dict
+            dictionary containing:
+            - 'progress' : float, simulation progress from 0.0 to 1.0
+            - 'sim_time' : float, current simulation time
+            - 'wall_time' : float, elapsed wall-clock time in seconds
+            - 'data' : dict, collected data from recording blocks
+        """
+
+        #initialize progress tracker
+        tracker = ProgressTracker(
+            total_duration=duration,
+            description="REALTIME",
+            logger=self.logger,
+            log=self.log
+            )
+
+        #realtime timing setup
+        tick_interval = 1.0 / tickrate
+        last_tick = time.perf_counter()
+        start_wall = time.perf_counter()
+        start_sim = self.time
+
+        #enter tracker context
+        with tracker:
+
+            #create the core simulation loop generator
+            loop = self._run_loop(duration, reset, adaptive, tracker=tracker)
+
+            #realtime pacing loop
+            while self._active:
+
+                #compute target simulation time based on wall-clock
+                wall_elapsed = time.perf_counter() - start_wall
+                target_time = start_sim + wall_elapsed * speed
+
+                #advance simulation until caught up with target time
+                try:
+                    while self.time < target_time:
+                        next(loop)
+                except StopIteration:
                     break
 
-                #advance the simulation by one (effective) timestep '_dt'
-                success, error_norm, scale, *_ = self.timestep(
-                    dt=_dt, 
-                    adaptive=_adaptive
-                    )
+                #check if enough wall-clock time has passed for yield
+                now = time.perf_counter()
+                if now - last_tick >= tick_interval:
+                    last_tick = now
 
-                #perform adaptive rescale
-                if _adaptive:            
+                    #compute progress
+                    progress = (self.time - start_sim) / duration
 
-                    #if no error estimate and rescale -> back to default timestep
-                    if not error_norm and scale == 1:
-                        _dt = self.dt
+                    #yield intermediate results
+                    yield {
+                        'progress': min(progress, 1.0),
+                        'sim_time': self.time,
+                        'wall_time': wall_elapsed,
+                        'data': self.collect()
+                        }
 
-                    #rescale due to error control
-                    _dt = scale * _dt
+                #small sleep to avoid busy-waiting
+                time.sleep(0.001)
 
-                    #estimate time until next event and adjust timestep
-                    _dt_evt = self._estimate_events(self.time)
-                    if _dt_evt is not None and _dt_evt < _dt:
-                        _dt = _dt_evt
-                        
-                    #rescale if in danger of overshooting 'end_time' at next step
-                    if self.time + _dt > end_time:
-                        _dt = end_time - self.time
-
-                    #apply bounds to timestep after rescale
-                    _dt = np.clip(_dt, self.dt_min, self.dt_max)
-
-                #compute simulation progress
-                progress = np.clip((self.time - start_time)/duration, 0.0, 1.0)
-
-                #update the tracker
-                tracker.update(progress, success=success)
-
-        return tracker.stats
+            #final yield with complete results
+            yield {
+                'progress': 1.0,
+                'sim_time': self.time,
+                'wall_time': time.perf_counter() - start_wall,
+                'data': self.collect()
+                }

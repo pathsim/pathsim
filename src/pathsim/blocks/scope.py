@@ -57,7 +57,7 @@ class Scope(Block):
     
     def __init__(self, sampling_rate=None, t_wait=0.0, labels=None):
         super().__init__()
-        
+
         #time delay until start recording
         self.t_wait = t_wait
 
@@ -119,6 +119,23 @@ class Scope(Block):
         time = np.array(list(self.recording.keys()))
         data = np.array(list(self.recording.values())).T
         return time, data
+
+
+    def collect(self):
+        """Yield (category, id, data) tuples for recording blocks to simplify 
+        global data collection from all recording blocks.
+        """
+        time, data = self.read()
+        if data is not None:
+            yield (
+                "scope", 
+                id(self), 
+                {
+                    "time": time,
+                    "data": data,
+                    "labels": self.labels,
+                    }
+                )
 
 
     def sample(self, t, dt):
