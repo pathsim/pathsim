@@ -170,18 +170,22 @@ class Anderson:
         dX = np.vstack(self.dx_buffer)
         dR = np.vstack(self.dr_buffer)
 
-        #exit for scalar values
-        if np.isscalar(_res):
+        #exit for scalar values (size-1 arrays after flatten)
+        if _res.size == 1:
+
+            #flatten to 1D for dot products
+            dR_flat = dR.flatten()
+            dX_flat = dX.flatten()
 
             #delta squared norm
-            dR2 = np.dot(dR, dR)
+            dR2 = np.dot(dR_flat, dR_flat)
 
             #catch division by zero
             if dR2 <= TOLERANCE:
-                return _g, abs(_res)
+                return _g, abs(_res[0])
 
             #new solution and residual
-            return _x - _res * np.dot(dR, dX) / dR2, abs(_res)
+            return _x - _res[0] * np.dot(dR_flat, dX_flat) / dR2, abs(_res[0])
 
         #compute coefficients from least squares problem
         C, *_ = np.linalg.lstsq(dR.T, _res, rcond=None)
@@ -273,7 +277,7 @@ class NewtonAnderson(Anderson):
         _res = _g - _x
 
         #early exit for scalar or purely vectorial values
-        if np.isscalar(_res) or np.ndim(_jac) == 1:
+        if _res.size == 1 or np.ndim(_jac) == 1:
             
             return _x - _res / (_jac - 1.0), np.linalg.norm(_res)
 

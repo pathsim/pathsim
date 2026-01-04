@@ -167,20 +167,16 @@ class Register:
 
         Parameters
         ----------
-        arr : np.ndarray, float
+        arr : np.ndarray, list, tuple, float
             array or scalar that is used to update internal register values
         """
-        if np.isscalar(arr):
+        if isinstance(arr, (np.ndarray, list, tuple)):
+            n = len(arr)
+            if n > len(self._data):
+                self.resize(n)
+            self._data[:n] = arr
+        else:
             self._data[0] = arr
-            return
-        
-        if not isinstance(arr, np.ndarray):
-            arr = np.asarray(arr)
-        
-        n_arr = len(arr)
-        self.resize(n_arr)
-        
-        np.copyto(self._data[:n_arr], arr)
 
     
     def __contains__(self, key):

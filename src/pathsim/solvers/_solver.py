@@ -223,7 +223,7 @@ class Solver:
         value : numeric, array[numeric]
             new internal state of the solver
         """
-        self.x = np.atleast_1d(value) if not np.isscalar(value) else value
+        self.x = np.atleast_1d(value)
 
 
     def reset(self):
