@@ -54,9 +54,9 @@ class LUT(Function):
         The scipy linear interpolator object used for interpolation.
     """
 
-    def __init__(self, points, values):
-        self.points = np.asarray(points)
-        self.values = np.asarray(values)
+    def __init__(self, points=None, values=None):
+        self.points = np.asarray(points) if points is not None else np.ones(2) 
+        self.values = np.asarray(values) if values is not None else np.ones(2)
 
         self.inter = LinearNDInterpolator(self.points, self.values)
 
@@ -108,9 +108,9 @@ class LUT1D(Function):
         extrapolation enabled beyond the data range.
     """
 
-    def __init__(self, points, values, fill_value="extrapolate"):
-        self.points = np.asarray(points).flatten()
-        self.values = np.asarray(values)
+    def __init__(self, points=None, values=None, fill_value="extrapolate"):
+        self.points = np.asarray(points).flatten() if points is not None else np.ones(2) 
+        self.values = np.asarray(values) if values is not None else np.ones(2)
         
         # Handle both 1D and 2D values
         if self.values.ndim == 1:

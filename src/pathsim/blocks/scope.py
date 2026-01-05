@@ -430,9 +430,9 @@ class Scope(Block):
 
 @deprecated(version="1.0.0")
 class RealtimeScope(Scope):
-    """An extension of the 'Scope' block that also initializes a realtime plotter
-    that creates an interactive plotting window while the simulation is running.
+    """An extension of the 'Scope' block that initializes a realtime plotter.
 
+    Creates an interactive plotting window while the simulation is running.
     Otherwise implements the same functionality as the regular 'Scope' block.
 
     Note
