@@ -46,8 +46,10 @@ class Scope(Block):
 
     Attributes
     ----------
-    recording : dict
-        recording, where key is time, and value the recorded values
+    recording_time : list[float]
+        recorded time points
+    recording_data : list[float]
+        regorded data points
     _incremental_idx : int
         index for incremental reading of accumulated data since last 
         call of incremental read
@@ -72,7 +74,8 @@ class Scope(Block):
         self.labels = labels if labels is not None else []
 
         #set recording data and time
-        self.recording = {}
+        self.recording_time = []
+        self.recording_data = []
 
         #initial index for incremental reading
         self._incremental_idx = 0
@@ -104,7 +107,8 @@ class Scope(Block):
         super().reset()
 
         #reset recording data and time
-        self.recording = {}
+        self.recording_time.clear()
+        self.recording_data.clear()
 
         #reset index for incremental read
         self._incremental_idx = 0
@@ -129,25 +133,21 @@ class Scope(Block):
         """
 
         #just return 'None' if no recording available
-        if not self.recording: 
+        if not self.recording_time or not self.recording_data: 
             return None, None
-
-        #reformat the data from the recording dict
-        time = np.array(list(self.recording.keys()))
-        data = np.array(list(self.recording.values())).T
             
         #return accumulated data since last incremental call
         if incremental:
             
-            _idx, self._incremental_idx = self._incremental_idx, len(self.recording)
+            _idx, self._incremental_idx = self._incremental_idx, len(self.recording_time)
             
             #no data accumulated -> exit same as empty recording
             if _idx == self._incremental_idx:
                 return None, None
 
-            return time[_idx:], data[_idx:]
+            return np.array(self.recording_time[_idx:]), np.array(self.recording_data[_idx:]).T
 
-        return time, data
+        return np.array(self.recording_time), np.array(self.recording_data).T
 
 
     @deprecated(version="1.0.0", reason="its against pathsims philosophy")
@@ -182,9 +182,11 @@ class Scope(Block):
         """
         if self.sampling_rate is None: 
             if t >= self.t_wait:
-                self.recording[t] = self.inputs.to_array()
+                self.recording_time.append(t) 
+                self.recording_data.append(self.inputs.to_array())
         elif self._sample_next_timestep:
-            self.recording[t] = self.inputs.to_array()
+            self.recording_time.append(t) 
+            self.recording_data.append(self.inputs.to_array())
             self._sample_next_timestep = False
 
 
@@ -206,13 +208,13 @@ class Scope(Block):
             internal axis instance
         """ 
 
-        #just return 'None' if no recording available
-        if not self.recording:
-            warnings.warn("no recording available for plotting in 'Scope.plot'")
-            return None, None
-
         #get data
         time, data = self.read() 
+
+        #just return 'None' if no recording available
+        if time is None:
+            warnings.warn("no recording available for plotting in 'Scope.plot'")
+            return None, None
 
         #initialize figure
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,4), tight_layout=True, dpi=120)
@@ -282,13 +284,13 @@ class Scope(Block):
             internal axis instance
         """ 
 
-        #just return 'None' if no recording available
-        if not self.recording:
-            warnings.warn("no recording available for plotting in 'Scope.plot2D'")
-            return None, None
-
         #get data
         time, data = self.read() 
+
+        #just return 'None' if no recording available
+        if time is None:
+            warnings.warn("no recording available for plotting in 'Scope.plot2D'")
+            return None, None
 
         #not enough channels -> early exit
         if len(data) < 2 or len(axes) != 2:
@@ -349,13 +351,13 @@ class Scope(Block):
             internal 3D axis instance.
         """
         
-        #check if recording is available
-        if not self.recording:
-            warnings.warn("no recording available for plotting in 'Scope.plot3D'")
-            return None, None 
+        #get data
+        time, data = self.read() 
 
-        #read the recorded data
-        time, data = self.read()
+        #just return 'None' if no recording available
+        if time is None:
+            warnings.warn("no recording available for plotting in 'Scope.plot3D'")
+            return None, None
 
         #check if enough channels are available
         if data.shape[0] < 3 or len(axes) != 3:
@@ -510,8 +512,6 @@ class RealtimeScope(Scope):
         t : float
             evaluation time for sampling
         """
-        if (self.sampling_rate is None or t * self.sampling_rate > len(self.recording)):
-            values = self.inputs.to_array()
-            self.plotter.update(t, values)
-            if t >= self.t_wait: 
-                self.recording[t] = values
+        if (self.sampling_rate is None):
+            self.plotter.update(t, self.inputs.to_array())
+            super().sample(t, dt)
