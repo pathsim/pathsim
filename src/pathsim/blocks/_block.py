@@ -13,6 +13,7 @@
 import inspect
 from functools import lru_cache
 
+from ..utils.deprecation import deprecated
 from ..utils.register import Register
 from ..utils.portreference import PortReference
 
@@ -442,6 +443,7 @@ class Block:
         pass
 
 
+    @deprecated(version="1.0.0", reason="its against pathsims philosophy")
     def collect(self):
         """Yield (category, id, data) tuples for recording blocks to simplify 
         global data collection from all recording blocks.

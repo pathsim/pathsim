@@ -21,6 +21,7 @@ from .optim.booster import ConnectionBooster
 from .utils.graph import Graph
 from .utils.register import Register
 from .utils.portreference import PortReference
+from .utils.deprecation import deprecated
 
 from ._constants import (
     SIM_ITERATIONS_MAX,
@@ -307,6 +308,7 @@ class Subsystem(Block):
 
     # extracting data -----------------------------------------------------------------------
 
+    @deprecated(version="1.0.0", reason="its against pathsims philosophy")
     def collect(self):
         """Aggregate results from internal blocks."""
         for block in self.blocks:

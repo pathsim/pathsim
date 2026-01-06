@@ -35,7 +35,8 @@ class TestScope(unittest.TestCase):
         self.assertEqual(S.sampling_rate, None)
         self.assertEqual(S.t_wait, 0.0)
         self.assertEqual(S.labels, [])
-        self.assertEqual(S.recording, {})
+        self.assertEqual(S.recording_time, [])
+        self.assertEqual(S.recording_data, [])
 
         #test specific initialization
         S = Scope(sampling_rate=1, t_wait=1.0, labels=["1", "2"])
@@ -71,12 +72,13 @@ class TestScope(unittest.TestCase):
             S.sample(t, None)
 
         #test that we have some recording
-        self.assertGreater(len(S.recording), 0)
+        self.assertGreater(len(S.recording_time), 0)
 
         S.reset()
 
         #test if reset was successful
-        self.assertEqual(S.recording, {})
+        self.assertEqual(S.recording_time, [])
+        self.assertEqual(S.recording_data, [])
 
 
     def test_sample(self):
@@ -90,13 +92,13 @@ class TestScope(unittest.TestCase):
             S.sample(t, None)
 
             #test most recent recording
-            self.assertEqual(S.recording[t], t)
+            self.assertEqual(S.recording_time[-1], t)
+            self.assertEqual(S.recording_data[-1][0], t)
 
         #multi input default initialization
         S = Scope()
 
         for t in range(10):
-
 
             S.inputs[0] = t
             S.inputs[1] = 2*t
@@ -104,7 +106,8 @@ class TestScope(unittest.TestCase):
             S.sample(t, None)
 
             #test most recent recording
-            self.assertTrue(np.all(np.equal(S.recording[t], [t, 2*t, 3*t])))
+            self.assertEqual(S.recording_time[-1], t)
+            self.assertTrue(np.all(np.equal(S.recording_data[-1], [t, 2*t, 3*t])))
 
 
     def test_read(self):
@@ -483,7 +486,7 @@ class TestRealtimeScope(unittest.TestCase):
             S.sample(t, None)
 
         # Should have recorded data
-        self.assertGreater(len(S.recording), 0)
+        self.assertGreater(len(S.recording_time), 0)
 
 
     def test_sample_with_sampling_rate(self):
@@ -499,7 +502,7 @@ class TestRealtimeScope(unittest.TestCase):
             S.sample(t, None)
 
         # Recording behavior depends on sampling rate logic
-        self.assertIsNotNone(S.recording)
+        self.assertIsNotNone(S.recording_time)
 
 
 # RUN TESTS LOCALLY ====================================================================

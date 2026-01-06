@@ -1273,6 +1273,7 @@ class Simulation:
 
     # data extraction -------------------------------------------------------------
 
+    @deprecated(version="1.0.0", reason="its against pathsims philosophy")
     def collect(self):
         """Collect all current simulation results from the internal 
         recording blocks
@@ -1354,7 +1355,7 @@ class Simulation:
             self._update(self.time)
 
         #sampling states and inputs at 'self.time == starting_time'
-        self._sample(self.time, self.dt)
+        self._sample(self.time, _dt)
 
         #main simulation loop
         while self.time < end_time and self._active:

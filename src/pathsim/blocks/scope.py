@@ -46,13 +46,19 @@ class Scope(Block):
 
     Attributes
     ----------
-    recording : dict
-        recording, where key is time, and value the recorded values
+    recording_time : list[float]
+        recorded time points
+    recording_data : list[float]
+        regorded data points
+    _incremental_idx : int
+        index for incremental reading of accumulated data since last 
+        call of incremental read
     _sample_next_timestep : bool
-        flag to indicate this is a timestep to sample, only used for event based sampling 
-        when `sampling_rate` is provided as an arg
+        flag to indicate this is a timestep to sample, only used for 
+        event based sampling when `sampling_rate` is provided as an arg
     events : list[Schedule]
-        internal scheduled event for periodic input sampling when `sampling_rate` is provided
+        internal scheduled event for periodic input sampling when 
+        `sampling_rate` is provided
     """
     
     def __init__(self, sampling_rate=None, t_wait=0.0, labels=None):
@@ -68,7 +74,11 @@ class Scope(Block):
         self.labels = labels if labels is not None else []
 
         #set recording data and time
-        self.recording = {}
+        self.recording_time = []
+        self.recording_data = []
+
+        #initial index for incremental reading
+        self._incremental_idx = 0
 
         #sampling produces discrete time behavior
         if not (sampling_rate is None):
@@ -97,12 +107,22 @@ class Scope(Block):
         super().reset()
 
         #reset recording data and time
-        self.recording = {}
+        self.recording_time.clear()
+        self.recording_data.clear()
+
+        #reset index for incremental read
+        self._incremental_idx = 0
 
 
-    def read(self):
-        """Return the recorded time domain data and the 
-        corresponding time for all input ports
+    def read(self, incremental=False):
+        """Return the recorded time domain data and the corresponding 
+        time for all input ports
+    
+        Parameters
+        ----------
+        incremental : bool
+            read the data incrementally, only return new data 
+            that has accumulated after the last incremental read call
 
         Returns
         -------
@@ -113,14 +133,24 @@ class Scope(Block):
         """
 
         #just return 'None' if no recording available
-        if not self.recording: return None, None
+        if not self.recording_time or not self.recording_data: 
+            return None, None
+            
+        #return accumulated data since last incremental call
+        if incremental:
+            
+            _idx, self._incremental_idx = self._incremental_idx, len(self.recording_time)
+            
+            #no data accumulated -> exit same as empty recording
+            if _idx == self._incremental_idx:
+                return None, None
 
-        #reformat the data from the recording dict
-        time = np.array(list(self.recording.keys()))
-        data = np.array(list(self.recording.values())).T
-        return time, data
+            return np.array(self.recording_time[_idx:]), np.array(self.recording_data[_idx:]).T
+
+        return np.array(self.recording_time), np.array(self.recording_data).T
 
 
+    @deprecated(version="1.0.0", reason="its against pathsims philosophy")
     def collect(self):
         """Yield (category, id, data) tuples for recording blocks to simplify 
         global data collection from all recording blocks.
@@ -139,10 +169,10 @@ class Scope(Block):
 
 
     def sample(self, t, dt):
-        """Sample the data from all inputs, and overwrites existing timepoints, 
-        since we use a dict for storing the recorded data.
- 
-        If `sampling_rate` is provided, this depends on the flag `_sample_next_timestep`, 
+        """Sample the data from all inputs. Skips duplicate timestamps to maintain
+        unique time points in the recording.
+
+        If `sampling_rate` is provided, this depends on the flag `_sample_next_timestep`,
         set by the internal `Schedule` event.
 
         Parameters
@@ -150,12 +180,24 @@ class Scope(Block):
         t : float
             evaluation time for sampling
         """
-        if self.sampling_rate is None: 
-            if t >= self.t_wait:
-                self.recording[t] = self.inputs.to_array()
+        #determine if we should sample
+        if self.sampling_rate is None:
+            should_sample = t >= self.t_wait
         elif self._sample_next_timestep:
-            self.recording[t] = self.inputs.to_array()
+            should_sample = True
             self._sample_next_timestep = False
+        else:
+            should_sample = False
+
+        if not should_sample:
+            return
+
+        #skip duplicate timestamps (can happen when continuing simulation)
+        if self.recording_time and self.recording_time[-1] == t:
+            return
+
+        self.recording_time.append(t)
+        self.recording_data.append(self.inputs.to_array())
 
 
     def plot(self, *args, **kwargs):
@@ -176,13 +218,13 @@ class Scope(Block):
             internal axis instance
         """ 
 
-        #just return 'None' if no recording available
-        if not self.recording:
-            warnings.warn("no recording available for plotting in 'Scope.plot'")
-            return None, None
-
         #get data
         time, data = self.read() 
+
+        #just return 'None' if no recording available
+        if time is None:
+            warnings.warn("no recording available for plotting in 'Scope.plot'")
+            return None, None
 
         #initialize figure
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,4), tight_layout=True, dpi=120)
@@ -252,13 +294,13 @@ class Scope(Block):
             internal axis instance
         """ 
 
-        #just return 'None' if no recording available
-        if not self.recording:
-            warnings.warn("no recording available for plotting in 'Scope.plot2D'")
-            return None, None
-
         #get data
         time, data = self.read() 
+
+        #just return 'None' if no recording available
+        if time is None:
+            warnings.warn("no recording available for plotting in 'Scope.plot2D'")
+            return None, None
 
         #not enough channels -> early exit
         if len(data) < 2 or len(axes) != 2:
@@ -319,13 +361,13 @@ class Scope(Block):
             internal 3D axis instance.
         """
         
-        #check if recording is available
-        if not self.recording:
-            warnings.warn("no recording available for plotting in 'Scope.plot3D'")
-            return None, None 
+        #get data
+        time, data = self.read() 
 
-        #read the recorded data
-        time, data = self.read()
+        #just return 'None' if no recording available
+        if time is None:
+            warnings.warn("no recording available for plotting in 'Scope.plot3D'")
+            return None, None
 
         #check if enough channels are available
         if data.shape[0] < 3 or len(axes) != 3:
@@ -480,8 +522,6 @@ class RealtimeScope(Scope):
         t : float
             evaluation time for sampling
         """
-        if (self.sampling_rate is None or t * self.sampling_rate > len(self.recording)):
-            values = self.inputs.to_array()
-            self.plotter.update(t, values)
-            if t >= self.t_wait: 
-                self.recording[t] = values
+        if (self.sampling_rate is None):
+            self.plotter.update(t, self.inputs.to_array())
+            super().sample(t, dt)
