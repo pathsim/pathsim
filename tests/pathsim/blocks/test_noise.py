@@ -28,16 +28,16 @@ class TestWhiteNoise(unittest.TestCase):
         WN = WhiteNoise()
 
         self.assertEqual(WN.spectral_density, 1)
-        self.assertEqual(WN.sampling_rate, None)
+        self.assertEqual(WN.sampling_period, None)
 
 
     def test_init_custom(self):
         """Test custom initialization"""
 
-        WN = WhiteNoise(spectral_density=4.0, sampling_rate=10.0)
+        WN = WhiteNoise(spectral_density=4.0, sampling_period=10.0)
 
         self.assertEqual(WN.spectral_density, 4.0)
-        self.assertEqual(WN.sampling_rate, 10.0)
+        self.assertEqual(WN.sampling_period, 10.0)
 
 
     def test_len(self):
@@ -66,9 +66,9 @@ class TestWhiteNoise(unittest.TestCase):
     def test_sample_with_rate(self):
         """Test sampling with specified rate uses scheduled events"""
 
-        WN = WhiteNoise(spectral_density=1.0, sampling_rate=1.0)
+        WN = WhiteNoise(spectral_density=1.0, sampling_period=1.0)
 
-        # When sampling_rate is specified, sampling happens via Schedule events
+        # When sampling_period is specified, sampling happens via Schedule events
         # not via the sample() method, so verify events exist
         self.assertTrue(hasattr(WN, 'events'))
         self.assertEqual(len(WN.events), 1)
@@ -126,7 +126,7 @@ class TestPinkNoise(unittest.TestCase):
 
         self.assertEqual(PN.spectral_density, 1)
         self.assertEqual(PN.num_octaves, 16)
-        self.assertEqual(PN.sampling_rate, None)
+        self.assertEqual(PN.sampling_period, None)
         self.assertEqual(PN.n_samples, 0)
         self.assertEqual(len(PN.octave_values), 16)
 
@@ -134,11 +134,11 @@ class TestPinkNoise(unittest.TestCase):
     def test_init_custom(self):
         """Test custom initialization"""
 
-        PN = PinkNoise(spectral_density=4.0, num_octaves=8, sampling_rate=10.0)
+        PN = PinkNoise(spectral_density=4.0, num_octaves=8, sampling_period=10.0)
 
         self.assertEqual(PN.spectral_density, 4.0)
         self.assertEqual(PN.num_octaves, 8)
-        self.assertEqual(PN.sampling_rate, 10.0)
+        self.assertEqual(PN.sampling_period, 10.0)
         self.assertEqual(len(PN.octave_values), 8)
 
 
@@ -171,9 +171,9 @@ class TestPinkNoise(unittest.TestCase):
     def test_sample_with_rate(self):
         """Test sampling with specified rate uses scheduled events"""
 
-        PN = PinkNoise(spectral_density=1.0, num_octaves=8, sampling_rate=1.0)
+        PN = PinkNoise(spectral_density=1.0, num_octaves=8, sampling_period=1.0)
 
-        # When sampling_rate is specified, sampling happens via Schedule events
+        # When sampling_period is specified, sampling happens via Schedule events
         # not via the sample() method, so verify events exist
         self.assertTrue(hasattr(PN, 'events'))
         self.assertEqual(len(PN.events), 1)

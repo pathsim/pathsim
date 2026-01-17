@@ -32,16 +32,16 @@ class TestScope(unittest.TestCase):
         #test default initialization
         S = Scope()
 
-        self.assertEqual(S.sampling_rate, None)
+        self.assertEqual(S.sampling_period, None)
         self.assertEqual(S.t_wait, 0.0)
         self.assertEqual(S.labels, [])
         self.assertEqual(S.recording_time, [])
         self.assertEqual(S.recording_data, [])
 
         #test specific initialization
-        S = Scope(sampling_rate=1, t_wait=1.0, labels=["1", "2"])
+        S = Scope(sampling_period=1, t_wait=1.0, labels=["1", "2"])
 
-        self.assertEqual(S.sampling_rate, 1)
+        self.assertEqual(S.sampling_period, 1)
         self.assertEqual(S.t_wait, 1.0)
         self.assertEqual(S.labels, ["1", "2"])
 
@@ -149,7 +149,7 @@ class TestScope(unittest.TestCase):
         self.assertTrue(np.all(np.equal(result, [_time, 2*_time, 3*_time])))
 
 
-    def test_sampling_rate(self):
+    def test_sampling_period(self):
         #TODO: implement this in the simulation loop because the 'Schedule' event
         pass
 
@@ -461,7 +461,7 @@ class TestRealtimeScope(unittest.TestCase):
         import warnings
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            S = RealtimeScope(sampling_rate=0.1, t_wait=1.0, labels=["sig1"])
+            S = RealtimeScope(sampling_period=0.1, t_wait=1.0, labels=["sig1"])
 
             # Should warn about deprecation (may be one of several warnings)
             self.assertTrue(len(w) > 0)
@@ -489,12 +489,12 @@ class TestRealtimeScope(unittest.TestCase):
         self.assertGreater(len(S.recording_time), 0)
 
 
-    def test_sample_with_sampling_rate(self):
-        """Test RealtimeScope with sampling_rate parameter"""
+    def test_sample_with_sampling_period(self):
+        """Test RealtimeScope with sampling_period parameter"""
         import warnings
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
-            S = RealtimeScope(sampling_rate=1.0, labels=["sig"])
+            S = RealtimeScope(sampling_period=1.0, labels=["sig"])
 
         # Sample at different times
         for t in [0.0, 0.5, 1.0, 1.5, 2.0]:

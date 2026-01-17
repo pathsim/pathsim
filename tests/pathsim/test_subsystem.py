@@ -328,7 +328,7 @@ class TestSubsystem(unittest.TestCase):
         from pathsim.blocks import Scope
 
         I1 = Interface()
-        scope = Scope(sampling_rate=0.1)  # Has scheduled event
+        scope = Scope(sampling_period=0.1)  # Has scheduled event
         C1 = Connection(I1, scope)
         S = Subsystem(blocks=[I1, scope], connections=[C1])
 

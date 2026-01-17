@@ -24,13 +24,13 @@ class TestRandomNumberGenerator(unittest.TestCase):
 
         R = RandomNumberGenerator()
 
-        self.assertEqual(R.sampling_rate, None)
+        self.assertEqual(R.sampling_period, None)
         self.assertEqual(R.events, [])
 
-        R = RandomNumberGenerator(sampling_rate=1)
+        R = RandomNumberGenerator(sampling_period=1)
 
-        self.assertEqual(R.sampling_rate, 1)
-        self.assertEqual(R.events[0].t_period, R.sampling_rate)
+        self.assertEqual(R.sampling_period, 1)
+        self.assertEqual(R.events[0].t_period, R.sampling_period)
 
 
     def test_len(self):
@@ -56,7 +56,7 @@ class TestRandomNumberGenerator(unittest.TestCase):
 
     def test_sample(self):
 
-        #first test default 'sampling_rate=None'
+        #first test default 'sampling_period=None'
         R = RandomNumberGenerator()
 
         for t in range(10):

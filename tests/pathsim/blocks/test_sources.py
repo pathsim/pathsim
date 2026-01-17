@@ -197,19 +197,19 @@ class TestSinusoidalPhaseNoiseSource(unittest.TestCase):
     
     def test_init(self):
         S = SinusoidalPhaseNoiseSource(
-            frequency=100, 
-            amplitude=2, 
+            frequency=100,
+            amplitude=2,
             phase=np.pi/4,
             sig_cum=0.1,
             sig_white=0.05,
-            sampling_rate=1000
+            sampling_period=0.001
         )
         self.assertEqual(S.frequency, 100)
         self.assertEqual(S.amplitude, 2)
         self.assertEqual(S.phase, np.pi/4)
         self.assertEqual(S.sig_cum, 0.1)
         self.assertEqual(S.sig_white, 0.05)
-        self.assertEqual(S.sampling_rate, 1000)
+        self.assertEqual(S.sampling_period, 0.001)
         self.assertEqual(S.omega, 2 * np.pi * 100)
 
     def test_set_solver(self):
@@ -223,12 +223,12 @@ class TestSinusoidalPhaseNoiseSource(unittest.TestCase):
 
     def test_update_and_sample(self):
         S = SinusoidalPhaseNoiseSource(
-            frequency=1, 
-            amplitude=1, 
+            frequency=1,
+            amplitude=1,
             phase=0,
             sig_cum=0,
             sig_white=0,
-            sampling_rate=10
+            sampling_period=0.1
         )
         
         # Mock the engine
@@ -271,7 +271,7 @@ class TestChirpPhaseNoiseSource(unittest.TestCase):
             phase=np.pi/2,
             sig_cum=0.1,
             sig_white=0.05,
-            sampling_rate=1000
+            sampling_period=0.001
         )
         self.assertEqual(C.amplitude, 2)
         self.assertEqual(C.f0, 100)
