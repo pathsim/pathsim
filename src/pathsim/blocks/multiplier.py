@@ -46,10 +46,10 @@ class Multiplier(Block):
         super().__init__()
 
         self.op_alg = Operator(
-            func=prod, 
-            jac=lambda x: np.array([
+            func=prod,
+            jac=lambda x: np.array([[
                 prod(np.delete(x, i)) for i in range(len(x))
-                ])
+                ]])
             )
 
 
