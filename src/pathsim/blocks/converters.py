@@ -71,12 +71,6 @@ class ADC(Block):
         self.T = T
         self.tau = tau
 
-        #override output ports
-        self.output_port_labels = {f"b{self.n_bits-n}":n for n in range(self.n_bits)}
-
-        #block io with port labels
-        self.outputs = Register(size=self.n_bits, mapping=output_port_labels)
-
         def _sample(t):
 
             #clip and scale to ADC span
@@ -154,6 +148,9 @@ class DAC(Block):
         Internal scheduled event responsible for periodic updates.
     """
 
+    input_port_labels = None
+    output_port_labels = {"out": 0}
+
     def __init__(self, n_bits=4, span=[-1, 1], T=1, tau=0):
         super().__init__()
 
@@ -161,13 +158,6 @@ class DAC(Block):
         self.span = span
         self.T = T
         self.tau = tau
-
-        #port alias map
-        _port_map_in = {f"b{self.n_bits-n}":n for n in range(self.n_bits)}
-
-        #block io with port labels
-        self.inputs = Register(size=self.n_bits, mapping=_port_map_in)
-        self.outputs = Register(mapping={"out":0})
 
         def _sample(t):
             
