@@ -79,10 +79,6 @@ class PID(Block):
     def __init__(self, Kp=0, Ki=0, Kd=0, f_max=100):
         super().__init__()
 
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
-
         #pid controller coefficients
         self.Kp = Kp
         self.Ki = Ki
