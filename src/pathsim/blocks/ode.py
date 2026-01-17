@@ -19,9 +19,7 @@ from ..optim.operator import DynamicOperator
 # BLOCKS ================================================================================
 
 class ODE(Block):
-    """
-    This block implements an ordinary differential equation (ODE) 
-    defined by its right hand side
+    """Ordinary differential equation (ODE) defined by its right hand side function.
 
     .. math::
 
@@ -30,10 +28,9 @@ class ODE(Block):
                    y(t) =& x(t) 
         \\end{eqnarray}
 
-    with inhomogenity (input) `u` and state vector `x`. The function 
-    can be nonlinear and the ODE can be of arbitrary order. 
-    The block utilizes the integration engine to solve the ODE 
-    by integrating the `func`, which is the right hand side function.
+    with inhomogenity (input) `u` and state vector `x`. The function can be nonlinear 
+    and the ODE can be of arbitrary order. The block utilizes the integration engine 
+    to solve the ODE by integrating the `func`, which is the right hand side function.
 
     Example
     -------
@@ -44,9 +41,9 @@ class ODE(Block):
         
         ode = ODE(lambda x, u, t: -x)
 
-    Or something more complex like the `Van der Pol` system, where it makes 
-    sense to also specify the jacobian, which improves convergence for 
-    implicit solvers but is not needed in most cases: 
+    Or something more complex like the `Van der Pol` system, where it makes sense to 
+    also specify the jacobian, which improves convergence for implicit solvers but is 
+    not needed in most cases: 
 
     .. code-block:: python
         

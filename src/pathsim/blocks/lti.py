@@ -27,9 +27,7 @@ from ..optim.operator import DynamicOperator
 # LTI BLOCKS ============================================================================
 
 class StateSpace(Block):
-    """
-    This block defines a linear time invariant (LTI) multi input multi output (MIMO) 
-    state space model with the structure
+    """Linear time invariant (LTI) multi input multi output (MIMO) state space model.
 
     .. math::
 
@@ -268,6 +266,9 @@ class TransferFunctionZPG(StateSpace):
         gain term of transfer function 
     """
 
+    input_port_labels = {"in": 0}
+    output_port_labels = {"out":0}
+
     def __init__(self, Zeros=[], Poles=[-1], Gain=1.0):
 
         #parameters of transfer function in zeros-poles-gain form
@@ -315,6 +316,9 @@ class TransferFunctionNumDen(StateSpace):
     Den : array_like
         denominator polynomial coefficients
     """
+
+    input_port_labels = {"in": 0}
+    output_port_labels = {"out":0}
 
     def __init__(self, Num=[1], Den=[1, 1]):
 

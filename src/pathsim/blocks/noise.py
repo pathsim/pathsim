@@ -1,6 +1,6 @@
 #########################################################################################
 ##
-##                             TIME DOMAIN NOISE SOURCES 
+##                             TIME DOMAIN NOISE SOURCES
 ##                                  (blocks/noise.py)
 ##
 #########################################################################################
@@ -10,179 +10,186 @@
 import numpy as np
 
 from ._block import Block
-from ..utils.register import Register
-from ..events.schedule import Schedule 
+from ..events.schedule import Schedule
 
 
 # NOISE SOURCE BLOCKS ===================================================================
 
 class WhiteNoise(Block):
-    """White noise source with uniform spectral density. Samples from
-    distribution with 'sampling_period' and holds noise values constant
-    for time bins (zero-order-hold).
+    """White noise source with Gaussian distribution.
 
-    If no 'sampling_period' (None) is specified, every simulation timestep
-    gets a new noise value. This is the default setting.
+    Generates uncorrelated random samples with either constant amplitude
+    (``standard_deviation`` mode) or timestep-scaled amplitude for stochastic
+    integration (``spectral_density`` mode).
+
+    In spectral density mode, output is scaled as √(S₀/dt) so that integrating
+    the noise yields correct statistical properties (Wiener process).
+
+
+    Note
+    ----
+    If ``spectral_density`` is provided, it takes precedence over ``standard_deviation``.
+    If ``sampling_period`` is set, noise is sampled at fixed intervals (zero-order hold).
+
 
     Parameters
     ----------
-    spectral_density : float
-        noise spectral density
-    noise : float
-        internal noise value
-    sampling_period : float, None
-        time between noise samples
-
-    Attributes
-    ----------
-    events : list[Schedule]
-        scheduled event for periodic sampling
+    standard_deviation : float
+        output standard deviation for constant-amplitude mode (default: 1.0)
+    spectral_density : float, optional
+        power spectral density S₀ in [signal²/Hz]
+    sampling_period : float, optional
+        time between samples, if None samples every timestep
+    seed : int, optional
+        random seed for reproducibility
     """
 
     input_port_labels = {}
-    output_port_labels = {"out":0}
+    output_port_labels = {"out": 0}
 
-    def __init__(self, spectral_density=1, sampling_period=None):
+    def __init__(self, standard_deviation=1.0, spectral_density=None,
+                 sampling_period=None, seed=None):
         super().__init__()
 
         #block parameters
+        self.standard_deviation = standard_deviation
         self.spectral_density = spectral_density
         self.sampling_period = sampling_period
 
+        #random number generator (with optional seed for reproducibility)
+        self._rng = np.random.default_rng(seed)
+
+        #current noise sample
+        self._current_sample = 0.0
+
         #sampling produces discrete time behavior
-        if sampling_period is None:
+        if sampling_period is not None:
 
-            #initial sample for non-discrete block
-            self._sample = np.random.rand()
+            #generate initial sample for discrete mode
+            self._current_sample = self._generate_sample(sampling_period)
+            self.outputs[0] = self._current_sample
 
-        else:
-
-            #internal scheduled list event
+            #internal scheduled event
             def _set(t):
-                self.outputs[0] = self._random(self.sampling_period)
+                self._current_sample = self._generate_sample(self.sampling_period)
+                self.outputs[0] = self._current_sample
 
             self.events = [
                 Schedule(
                     t_start=0,
                     t_period=sampling_period,
                     func_act=_set
-                    )
-                ]
+                )
+            ]
 
 
     def __len__(self):
         return 0
 
 
-    def _random(self, dt):
-        """Generate random sample from scaled normal distribution"""
-        return np.random.normal(0, 1) * np.sqrt(self.spectral_density/dt) 
-
-
-    def sample(self, t, dt):
-        """Sample from a normal distribution after successful timestep
+    def _generate_sample(self, dt):
+        """Generate a random sample from the noise distribution.
 
         Parameters
         ----------
-        t : float
-            evaluation time for sampling
         dt : float
-            integration timestep
+            integration timestep (used for spectral density scaling)
         """
-        if self.sampling_period is None:
-            self.outputs[0] = self._random(dt)
-           
+        if self.spectral_density is not None:
+            #spectral density mode: scale for correct integration
+            return self._rng.normal(0, 1) * np.sqrt(self.spectral_density / dt)
+        else:
+            #constant amplitude mode
+            return self._rng.normal(0, self.standard_deviation)
 
-    def update(self, t):
-        """update system equation for fixed point loop, 
-        here just setting the outputs
-    
+
+    def sample(self, t, dt):
+        """Generate new noise sample after successful timestep.
+
+        Only generates new samples in continuous mode (sampling_period=None).
+
         Parameters
         ----------
         t : float
             evaluation time
+        dt : float
+            integration timestep
         """
+        if self.sampling_period is None:
+            self._current_sample = self._generate_sample(dt)
+            self.outputs[0] = self._current_sample
+
+
+    def update(self, t):
         pass
 
 
 class PinkNoise(Block):
-    """Pink noise (1/f) source using the Voss-McCartney algorithm.
+    """Pink noise (1/f noise) source using the Voss-McCartney algorithm.
 
-    Generates noise with power spectral density inversely proportional to 
-    frequency. Samples from distribution with 'sampling_rate' and holds 
-    noise values constant for time bins (zero-order-hold).
-    
-    The Voss-McCartney algorithm maintains ``num_octaves`` independent 
-    random values. At each sample n, octaves are selectively updated based 
-    on the binary representation of n:
-    
-    - Octave 0: updated every sample (when n & 1 == 1)
-    - Octave 1: updated every 2nd sample (when n & 2 == 2)  
-    - Octave 2: updated every 4th sample (when n & 4 == 4)
-    - Octave k: updated every :math:`2^k` samples
-    
-    The pink noise output is the sum of all octaves, scaled to achieve the 
-    desired spectral density:
-    
-    .. math::
-    
-        y[n] = \\sqrt{\\frac{S_0}{N \\cdot dt}} \\sum_{k=0}^{N-1} x_k[n]
-    
-    where :math:`S_0` is the spectral density, :math:`N` is ``num_octaves``,
-    :math:`dt` is the sampling timestep, and :math:`x_k[n]` are the octave 
-    values (each drawn from :math:`\\mathcal{N}(0, 1)` when updated).
-    
+    Generates noise with power spectral density proportional to 1/f, where
+    lower frequencies have more power than higher frequencies.
+
+    The algorithm maintains ``num_octaves`` independent random values representing
+    different frequency bands. At each sample, one octave is updated based on the
+    binary representation of the sample counter, creating the characteristic 1/f
+    spectrum through the superposition of different update rates.
+
+
     Note
     ----
-    If no 'sampling_period' (None) is specified, every simulation timestep
-    gets a new noise value. This is the default setting.
+    If ``spectral_density`` is provided, it takes precedence over ``standard_deviation``.
+    If ``sampling_period`` is set, noise is sampled at fixed intervals (zero-order hold).
+
 
     Parameters
     ----------
-    spectral_density : float
-        noise spectral density :math:`S_0`
+    standard_deviation : float
+        approximate output standard deviation (default: 1.0)
+    spectral_density : float, optional
+        power spectral density, output scaled as √(S₀/(N·dt))
     num_octaves : int
-        number of octaves (levels of randomness), default is 16
-    sampling_period : float, None
-        time between noise samples 
-
-    Attributes
-    ----------
-    n_samples : int
-        internal sample counter 
-    octave_values : array[float]
-        internal random numbers for octaves in the Voss-McCartney algorithm
-    events : list[Schedule]
-        scheduled event for periodic sampling
-        
-    References
-    ----------
-    .. [1] Voss, R. F., & Clarke, J. (1978). "1/f noise" in music: Music from 
-           1/f noise. The Journal of the Acoustical Society of America, 63(1), 
-           258-263.
+        number of frequency bands in algorithm (default: 16)
+    sampling_period : float, optional
+        time between samples, if None samples every timestep
+    seed : int, optional
+        random seed for reproducibility
     """
 
     input_port_labels = {}
-    output_port_labels = {"out":0}
+    output_port_labels = {"out": 0}
 
-    def __init__(self, spectral_density=1, num_octaves=16, sampling_period=None):
+    def __init__(self, standard_deviation=1.0, spectral_density=None,
+                 num_octaves=16, sampling_period=None, seed=None):
         super().__init__()
 
         #block parameters
+        self.standard_deviation = standard_deviation
         self.spectral_density = spectral_density
         self.num_octaves = num_octaves
         self.sampling_period = sampling_period
-        self.n_samples = 0
 
-        # Initialize the random values for each octave
-        self.octave_values = np.random.normal(0, 1, self.num_octaves)
+        #random number generator (with optional seed)
+        self._rng = np.random.default_rng(seed)
+
+        #algorithm state
+        self.n_samples = 0
+        self.octave_values = self._rng.normal(0, 1, self.num_octaves)
+
+        #current noise sample
+        self._current_sample = 0.0
 
         #sampling produces discrete time behavior
         if sampling_period is not None:
 
-            #internal scheduled list event
+            #generate initial sample for discrete mode
+            self._current_sample = self._generate_sample(sampling_period)
+            self.outputs[0] = self._current_sample
+
+            #internal scheduled event
             def _set(t):
-                self.outputs[0] = self._random(self.sampling_period)
+                self._current_sample = self._generate_sample(self.sampling_period)
+                self.outputs[0] = self._current_sample
 
             self.events = [
                 Schedule(
@@ -198,75 +205,67 @@ class PinkNoise(Block):
 
 
     def reset(self):
+        """Reset the noise generator state.
+
+        Resets the sample counter and reinitializes all octave values.
+        """
         super().reset()
-
-        #reset counters and octave values
         self.n_samples = 0
-        self.octave_values = np.random.normal(0, 1, self.num_octaves)
+        self.octave_values = self._rng.normal(0, 1, self.num_octaves)
+        self._current_sample = 0.0
 
 
-    def _random(self, dt):
+    def _generate_sample(self, dt):
         """Generate a pink noise sample using the Voss-McCartney algorithm.
-        
-        Uses bitwise operations on the sample counter to determine which 
-        octaves to update. Octave k is updated every :math:`2^k` samples, 
-        creating the characteristic 1/f power spectrum when all octaves 
-        are summed.
-        
+
         Parameters
         ----------
         dt : float
-            timestep for scaling spectral density
-            
-        Returns
-        -------
-        float
-            Pink noise sample scaled as :math:`\\sqrt{S_0 / (N \\cdot dt)}`
-            where :math:`S_0` is spectral density and :math:`N` is num_octaves
+            integration timestep (used for spectral density scaling)
         """
-        # Increment the counter
+        #increment sample counter
         self.n_samples += 1
 
-        # Use bitwise operations to determine which octaves to update
-        # Find the rightmost zero bit in the binary representation
-        mask, idx = self.n_samples, 0
-        while mask & 1 == 0 and idx < self.num_octaves:
-            mask >>= 1
-            idx += 1
+        #find position of least significant 1-bit (trailing zeros)
+        #this determines which octave to update
+        n = self.n_samples
+        octave_idx = 0
+        while (n & 1) == 0 and octave_idx < self.num_octaves - 1:
+            n >>= 1
+            octave_idx += 1
 
-        # Update the selected octave with a new random value
-        if idx < self.num_octaves:    
-            self.octave_values[idx] = np.random.normal(0, 1)
+        #update the selected octave
+        self.octave_values[octave_idx] = self._rng.normal(0, 1)
 
-        # Sum the octave values to produce the pink noise sample
+        #sum all octaves for pink noise output
         pink_sample = np.sum(self.octave_values)
 
-        # Scale by sqrt(spectral_density / num_octaves / dt) to maintain 
-        # consistent spectral density across different timesteps
-        return pink_sample * np.sqrt(self.spectral_density/self.num_octaves/dt)
+        #scale output based on parameterization mode
+        if self.spectral_density is not None:
+            #spectral density mode
+            return pink_sample * np.sqrt(self.spectral_density / self.num_octaves / dt)
+        else:
+            #constant amplitude mode
+            #normalize by sqrt(num_octaves) since Var(sum) ≈ num_octaves
+            return pink_sample * self.standard_deviation / np.sqrt(self.num_octaves)
 
 
     def sample(self, t, dt):
-        """Sample pink noise after successful timestep.
+        """Generate new noise sample after successful timestep.
 
-        Parameters
-        ----------
-        t : float
-            evaluation time for sampling
-        dt : float
-            integration timestep
-        """
-        if self.sampling_period is None:
-            self.outputs[0] = self._random(dt)
+        Only generates new samples in continuous mode (sampling_period=None).
 
-            
-    def update(self, t):
-        """update system equation for fixed point loop, 
-        here just setting the outputs
-    
         Parameters
         ----------
         t : float
             evaluation time
+        dt : float
+            integration timestep
         """
+        if self.sampling_period is None:
+            self._current_sample = self._generate_sample(dt)
+            self.outputs[0] = self._current_sample
+
+
+    def update(self, t):
         pass

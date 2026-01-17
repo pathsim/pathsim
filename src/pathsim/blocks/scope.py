@@ -61,6 +61,9 @@ class Scope(Block):
         `sampling_period` is provided
     """
     
+    input_port_labels = None
+    output_port_labels = {}
+
     def __init__(self, sampling_period=None, t_wait=0.0, labels=None):
         super().__init__()
 

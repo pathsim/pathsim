@@ -17,8 +17,10 @@ from ..events.zerocrossing import ZeroCrossing, ZeroCrossingUp, ZeroCrossingDown
 # MIXED SIGNAL BLOCKS ===================================================================
 
 class Counter(Block):
-    """Counter block that counts the number of detected bidirectional
-    zero-crossing events and sets the output accordingly.
+    """Counts the number of detected bidirectional threshold crossings.
+
+    Uses zero-crossing events for the detection and and sets the output 
+    accordingly.
 
     Parameters
     ----------
@@ -79,8 +81,7 @@ class Counter(Block):
 
 
 class CounterUp(Counter):
-    """Counter block that counts the number of detected unidirectional
-    zero-crossing events and sets the output accordingly.
+    """Counts the number of detected unidirectional (lo->hi) threshold crossings.
     
     Note
     ----
@@ -115,8 +116,7 @@ class CounterUp(Counter):
 
 
 class CounterDown(Counter):
-    """Counter block that counts the number of detected unidirectional
-    zero-crossing events and sets the output accordingly.
+    """Counts the number of detected unidirectional (hi->lo) threshold crossings.
     
     Note
     ----

@@ -17,13 +17,13 @@ from ..events.zerocrossing import ZeroCrossing
 # MIXED SIGNAL BLOCKS ===================================================================
 
 class Comparator(Block):
-    """Comparator block that sets the output to '1' it the input 
-    signal crosses a predefined threshold and to '-1' if it 
-    crosses in the reverse direction. 
+    """Comparator block that sets output depending on predefined thresholds for the input.
 
-    This is realized by the block spawning a zero-crossing 
-    event detector that watches the input of the block and 
-    locates the transition up to a tolerance. 
+    Sets the output to '1' if the input signal crosses a predefined threshold and to '-1' 
+    if it crosses in the reverse direction. 
+
+    This is realized by the block spawning a zero-crossing event detector that watches 
+    the input of the block and locates the transition up to a tolerance. 
     
     The block output is determined by a simple sign check in
     the 'update' method.

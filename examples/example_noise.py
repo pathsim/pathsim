@@ -35,8 +35,8 @@ f = 0.5
 
 #blocks that define the system
 Src = SquareWaveSource(frequency=f)
-Ns1 = PinkNoise(spectral_density=0.01, sampling_period=3*dt)
-Ns2 = WhiteNoise(spectral_density=0.005, sampling_period=3*dt)
+Ns1 = PinkNoise(standard_deviation=0.1, sampling_period=3*dt)
+Ns2 = WhiteNoise(standard_deviation=0.07, sampling_period=3*dt)
 FLT = ButterworthBandpassFilter((f-f/10, f+f/10), 4)
 Add = Adder()
 Sco = Scope(

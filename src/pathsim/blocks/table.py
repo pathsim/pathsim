@@ -15,8 +15,7 @@ import numpy as np
 # BLOCKS ================================================================================
 
 class LUT(Function):
-    """
-    N-dimensional lookup table with linear interpolation functionality.
+    """N-dimensional lookup table with linear interpolation functionality.
 
     This class implements a multi-dimensional lookup table that uses scipy's
     LinearNDInterpolator [#scipy]_ for piecewise linear interpolation in N-dimensional 
@@ -64,8 +63,7 @@ class LUT(Function):
 
 
 class LUT1D(Function):
-    """
-    One-dimensional lookup table with linear interpolation functionality.
+    """One-dimensional lookup table with linear interpolation functionality.
     
     This class implements a 1-dimensional lookup table that uses scipy's interp1d [#scipy]_
     for piecewise linear interpolation along a single axis. The interpolation

@@ -17,8 +17,7 @@ from ..optim.operator import Operator, DynamicOperator
 # MIMO BLOCKS ===========================================================================
 
 class Function(Block):
-    """Arbitrary MIMO function block, defined by a callable object, 
-    i.e. function or `lambda` expression.
+    """Arbitrary MIMO function block, defined by a function or `lambda` expression.
 
     The function can have multiple arguments that are then provided 
     by the input channels of the function block.
@@ -143,8 +142,7 @@ class Function(Block):
 
 
 class DynamicalFunction(Block):
-    """Arbitrary MIMO function block, defined by a callable object, 
-    i.e. function or `lambda` expression.
+    """Arbitrary MIMO time and input dependent function block.
 
     The function signature needs two arguments `f(u, t)` where `u` is 
     the (possibly vectorial) block input and `t` is a time dependency.

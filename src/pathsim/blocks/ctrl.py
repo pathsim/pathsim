@@ -79,10 +79,6 @@ class PID(Block):
     def __init__(self, Kp=0, Ki=0, Kd=0, f_max=100):
         super().__init__()
 
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
-
         #pid controller coefficients
         self.Kp = Kp
         self.Ki = Ki
@@ -185,8 +181,7 @@ class PID(Block):
 
 
 class AntiWindupPID(PID):
-    """Proportional-Integral-Differntiation (PID) controller with tracking 
-    anti-windup mechanism (back-calculation).
+    """Proportional-Integral-Differntiation (PID) controller with anti-windup mechanism (back-calculation).
     
     Anti-windup mechanisms are needed when the magnitude of the control signal 
     from the PID controller is limited by some real world saturation. In these cases, 
