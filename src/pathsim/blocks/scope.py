@@ -26,19 +26,19 @@ from .._constants import COLORS_ALL
 # BLOCKS FOR DATA RECORDING =============================================================
 
 class Scope(Block):
-    """Block for recording time domain data with variable sampling rate.
-    
-    A time threshold can be set by `t_wait` to start recording data after the simulation 
-    time is larger then the specified waiting time, i.e. `t - t_wait > 0`. 
+    """Block for recording time domain data with variable sampling period.
+
+    A time threshold can be set by `t_wait` to start recording data after the simulation
+    time is larger then the specified waiting time, i.e. `t - t_wait > 0`.
     This is useful for recording data only after all the transients have settled.
-    
-    The block uses an interal `Schedule` event, when `sampling_rate` is provided, 
+
+    The block uses an internal `Schedule` event, when `sampling_period` is provided,
     otherwise it just samples at every simulation timestep.
 
     Parameters
     ----------
-    sampling_rate : int, None
-        number of samples per time unit, default is every timestep
+    sampling_period : float, None
+        time between samples, default is every timestep
     t_wait : float
         wait time before starting recording, optional
     labels : list[str]
@@ -49,26 +49,26 @@ class Scope(Block):
     recording_time : list[float]
         recorded time points
     recording_data : list[float]
-        regorded data points
+        recorded data points
     _incremental_idx : int
-        index for incremental reading of accumulated data since last 
+        index for incremental reading of accumulated data since last
         call of incremental read
     _sample_next_timestep : bool
-        flag to indicate this is a timestep to sample, only used for 
-        event based sampling when `sampling_rate` is provided as an arg
+        flag to indicate this is a timestep to sample, only used for
+        event based sampling when `sampling_period` is provided as an arg
     events : list[Schedule]
-        internal scheduled event for periodic input sampling when 
-        `sampling_rate` is provided
+        internal scheduled event for periodic input sampling when
+        `sampling_period` is provided
     """
     
-    def __init__(self, sampling_rate=None, t_wait=0.0, labels=None):
+    def __init__(self, sampling_period=None, t_wait=0.0, labels=None):
         super().__init__()
 
         #time delay until start recording
         self.t_wait = t_wait
 
         #params for sampling
-        self.sampling_rate = sampling_rate
+        self.sampling_period = sampling_period
 
         #labels for plotting and saving data
         self.labels = labels if labels is not None else []
@@ -81,7 +81,7 @@ class Scope(Block):
         self._incremental_idx = 0
 
         #sampling produces discrete time behavior
-        if not (sampling_rate is None):
+        if not (sampling_period is None):
 
             #flag to indicate this is a timestep to sample
             self._sample_next_timestep = False
@@ -93,7 +93,7 @@ class Scope(Block):
             self.events = [
                 Schedule(
                     t_start=t_wait,
-                    t_period=sampling_rate,
+                    t_period=sampling_period,
                     func_act=_sample
                     )
             ]
@@ -172,7 +172,7 @@ class Scope(Block):
         """Sample the data from all inputs. Skips duplicate timestamps to maintain
         unique time points in the recording.
 
-        If `sampling_rate` is provided, this depends on the flag `_sample_next_timestep`,
+        If `sampling_period` is provided, this depends on the flag `_sample_next_timestep`,
         set by the internal `Schedule` event.
 
         Parameters
@@ -181,7 +181,7 @@ class Scope(Block):
             evaluation time for sampling
         """
         #determine if we should sample
-        if self.sampling_rate is None:
+        if self.sampling_period is None:
             should_sample = t >= self.t_wait
         elif self._sample_next_timestep:
             should_sample = True
@@ -485,8 +485,8 @@ class RealtimeScope(Scope):
 
     Parameters
     ----------
-    sampling_rate : int, None
-        number of samples time unit, default is every timestep
+    sampling_period : float, None
+        time between samples, default is every timestep
     t_wait : float
         wait time before starting recording
     labels : list[str]
@@ -500,8 +500,8 @@ class RealtimeScope(Scope):
         instance of a RealtimePlotter
     """
 
-    def __init__(self, sampling_rate=None, t_wait=0.0, labels=[], max_samples=None):
-        super().__init__(sampling_rate, t_wait, labels)
+    def __init__(self, sampling_period=None, t_wait=0.0, labels=[], max_samples=None):
+        super().__init__(sampling_period, t_wait, labels)
 
         #initialize realtime plotter
         self.plotter = RealtimePlotter(
@@ -522,6 +522,6 @@ class RealtimeScope(Scope):
         t : float
             evaluation time for sampling
         """
-        if (self.sampling_rate is None):
+        if (self.sampling_period is None):
             self.plotter.update(t, self.inputs.to_array())
             super().sample(t, dt)
