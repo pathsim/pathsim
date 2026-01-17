@@ -3,8 +3,6 @@
 ##                                   SWITCH BLOCK
 ##                                (blocks/switch.py)
 ##
-##                                Milan Rother 2025
-##
 #########################################################################################
 
 # IMPORTS ===============================================================================
@@ -53,6 +51,9 @@ class Switch(Block):
         state of the switch
     
     """
+
+    input_port_labels = None
+    output_port_labels = {"out":0}
 
     def __init__(self, state=None):
         super().__init__()

@@ -29,11 +29,11 @@ class Constant(Block):
         constant defining block output
     """
 
-    def __init__(self, value=1):
-        super().__init__()        
+    input_port_labels = {}
+    output_port_labels = {"out":0}
 
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
+    def __init__(self, value=1):
+        super().__init__()
 
         self.value = value
 
@@ -129,11 +129,11 @@ class Source(Block):
         function defining time dependent block output
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(self, func=lambda t: 1):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         if not callable(func):
             raise ValueError(f"'{func}' is not callable")
@@ -165,7 +165,7 @@ class Source(Block):
 
 # SPECIAL CONTINUOUS SOURCE BLOCKS ======================================================
 
-class TriangleWaveSource(Block):
+class TriangleWaveSource(Source):
     """Source block that generates an analog triangle wave
         
     Parameters
@@ -179,20 +179,18 @@ class TriangleWaveSource(Block):
     """
 
     def __init__(self, frequency=1, amplitude=1, phase=0):
-        super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #specific params
         self.amplitude = amplitude
         self.frequency = frequency
         self.phase = phase
 
+        #phase induced delay
+        self._tau = self.phase/(2*np.pi*self.frequency)
 
-    def __len__(self):
-        return 0
-
+        super().__init__(
+            func= lambda t: self.amplitude * self._triangle_wave(t + self._tau, self.frequency)
+            )
 
     def _triangle_wave(self, t, f):
         """triangle wave with amplitude '1' and frequency 'f'
@@ -212,12 +210,7 @@ class TriangleWaveSource(Block):
         return 2 * abs(t*f - np.floor(t*f + 0.5)) - 1
 
 
-    def update(self, t):
-        tau = self.phase/(2*np.pi*self.frequency)
-        self.outputs[0] = self.amplitude * self._triangle_wave(t + tau, self.frequency)
-
-
-class SinusoidalSource(Block):
+class SinusoidalSource(Source):
     """Source block that generates a sinusoid wave
         
     Parameters
@@ -231,27 +224,21 @@ class SinusoidalSource(Block):
     """
 
     def __init__(self, frequency=1, amplitude=1, phase=0):
-        super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block params
         self.amplitude = amplitude
         self.frequency = frequency
         self.phase = phase
 
+        #angular frequency
+        self._omega = 2*np.pi*self.frequency
 
-    def __len__(self):
-        return 0
-
-
-    def update(self, t):
-        omega = 2*np.pi*self.frequency
-        self.outputs[0] = self.amplitude * np.sin(omega*t + self.phase)
+        super().__init__(
+            func=lambda t: self.amplitude * np.sin(self._omega*t + self.phase)
+            )
 
 
-class GaussianPulseSource(Block):
+class GaussianPulseSource(Source):
     """Source block that generates a gaussian pulse
         
     Parameters
@@ -265,7 +252,6 @@ class GaussianPulseSource(Block):
     """
 
     def __init__(self, amplitude=1, f_max=1e3, tau=0.0):
-        super().__init__()
 
         #block outputs with port labels
         self.outputs = Register(mapping={"out": 0})
@@ -275,9 +261,9 @@ class GaussianPulseSource(Block):
         self.f_max = f_max
         self.tau = tau
 
-
-    def __len__(self):
-        return 0
+        super().__init__(
+            func=lambda t: self.amplitude * self._gaussian(t-self.tau, self.f_max)
+            )
 
 
     def _gaussian(self, t, f_max):
@@ -297,10 +283,6 @@ class GaussianPulseSource(Block):
         """
         tau = 0.5 / f_max
         return np.exp(-(t/tau)**2)
-
-
-    def update(self, t):
-        self.outputs[0] = self.amplitude * self._gaussian(t-self.tau, self.f_max)
 
 
 class SinusoidalPhaseNoiseSource(Block):
@@ -350,6 +332,9 @@ class SinusoidalPhaseNoiseSource(Block):
         scheduled event for periodic sampling (only if sampling_rate is set)
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(
         self, 
         frequency=1, 
@@ -360,9 +345,6 @@ class SinusoidalPhaseNoiseSource(Block):
         sampling_rate=10
         ):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block params
         self.amplitude = amplitude
@@ -548,6 +530,9 @@ class ChirpPhaseNoiseSource(Block):
         scheduled event for periodic sampling (only if sampling_rate is set)
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(
         self, 
         amplitude=1, 
@@ -560,9 +545,6 @@ class ChirpPhaseNoiseSource(Block):
         sampling_rate=10
         ):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #parameters of chirp signal
         self.amplitude = amplitude
@@ -752,6 +734,9 @@ class PulseSource(Block):
         Simulation time when the current phase began.
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(
         self, 
         amplitude=1.0, 
@@ -762,9 +747,6 @@ class PulseSource(Block):
         duty=0.5
         ):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #input validation
         if not (T > 0):
@@ -943,11 +925,11 @@ class ClockSource(Block):
         internal scheduled event list 
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(self, T=1, tau=0):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block params
         self.T   = T
@@ -1006,16 +988,16 @@ class SquareWaveSource(Block):
         internal scheduled events 
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(self, amplitude=1, frequency=1, phase=0):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block params
         self.amplitude = amplitude
         self.frequency = frequency
-        self.phase     = phase
+        self.phase = phase
 
         def sqw_up(t):
             self.outputs[0] = self.amplitude
@@ -1106,12 +1088,11 @@ class StepSource(Block):
     events : list[ScheduleList]
         list of interna events
     """
+    input_port_labels = {}
+    output_port_labels = {"out":0}
     
     def __init__(self, amplitude=1, tau=0.0):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #input type validation
         if not isinstance(amplitude, (int, float, list, np.ndarray)):

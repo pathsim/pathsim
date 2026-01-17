@@ -52,12 +52,14 @@ class TestADC(unittest.TestCase):
 
 
     def test_output_ports(self):
-        """Test that ADC has correct number of output ports"""
+        """Test that ADC has correct number of output ports after sampling"""
 
         adc = ADC(n_bits=4)
+        adc.events[0].func_act(0)  # trigger sampling to expand outputs
         self.assertEqual(len(adc.outputs), 4)
 
         adc = ADC(n_bits=8)
+        adc.events[0].func_act(0)  # trigger sampling to expand outputs
         self.assertEqual(len(adc.outputs), 8)
 
 
@@ -199,12 +201,16 @@ class TestDAC(unittest.TestCase):
 
 
     def test_input_ports(self):
-        """Test that DAC has correct number of input ports"""
+        """Test that DAC has correct number of input ports after setting values"""
 
         dac = DAC(n_bits=4)
+        for i in range(4):  # set values to expand inputs
+            dac.inputs[i] = 0
         self.assertEqual(len(dac.inputs), 4)
 
         dac = DAC(n_bits=8)
+        for i in range(8):  # set values to expand inputs
+            dac.inputs[i] = 0
         self.assertEqual(len(dac.inputs), 8)
 
 

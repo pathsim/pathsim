@@ -57,6 +57,9 @@ class Relay(Block):
         internal zero crossing events for relay state transitions
     """
 
+    input_port_labels = {"in":0}
+    output_port_labels = {"out":0}
+
     def __init__(
         self, 
         threshold_up=1.0, 
@@ -71,10 +74,6 @@ class Relay(Block):
         self.threshold_down = threshold_down 
         self.value_up = value_up 
         self.value_down = value_down 
-
-        # block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
         # internal event function factories
         def _check(val):

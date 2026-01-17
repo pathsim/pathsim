@@ -39,12 +39,11 @@ class Multiplier(Block):
     op_alg : Operator
         internal algebraic operator that wraps 'prod'
     """
+    input_port_labels = None
+    output_port_labels = {"out":0}
 
     def __init__(self):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         self.op_alg = Operator(
             func=prod, 

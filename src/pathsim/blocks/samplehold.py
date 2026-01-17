@@ -16,9 +16,8 @@ from ..events.schedule import Schedule
 # MIXED SIGNAL BLOCKS ===================================================================
 
 class SampleHold(Block):
-    """Sample and hold stage that samples the inputs 
-    periodically using scheduled events and produces 
-    them at the output.
+    """Sample and hold stage that samples the inputs periodically using 
+    scheduled events and produces them at the output.
     
     Parameters
     ----------

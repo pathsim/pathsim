@@ -19,7 +19,9 @@ from ..optim.operator import DynamicOperator
 # BLOCKS ================================================================================
 
 class Integrator(Block):
-    """Integrates the input signal using a numerical integration engine like this:
+    """Integrates the input signal.
+
+    Uses a numerical integration engine like this:
 
     .. math::
 
@@ -33,7 +35,8 @@ class Integrator(Block):
                    y(t) &= x(t) 
         \\end{eqnarray}
 
-    The Integrator block is inherently MIMO capable, so `u` and `y` can be vectors.
+    The Integrator block is inherently MIMO capable, so `u` 
+    and `y` can be vectors.
     
     Example
     -------

@@ -198,7 +198,7 @@ class TestBlock(unittest.TestCase):
         info = Block.info()
 
         #check all expected keys are present
-        expected_keys = {"type", "description", "shape", "size", "in_labels", "out_labels", "parameters"}
+        expected_keys = {"type", "description", "input_port_labels", "output_port_labels", "parameters"}
         self.assertEqual(set(info.keys()), expected_keys)
 
         #check type is correct
@@ -207,11 +207,9 @@ class TestBlock(unittest.TestCase):
         #check description is the docstring
         self.assertIn("Base 'Block' object", info["description"])
 
-        #check shape (default 1 input, 1 output)
-        self.assertEqual(info["shape"], (1, 1))
-
-        #check size (1 block, 0 internal states for base block)
-        self.assertEqual(info["size"], (1, 0))
+        #check port labels (base Block has dynamic ports)
+        self.assertIsNone(info["input_port_labels"])
+        self.assertIsNone(info["output_port_labels"])
 
         #check parameters (base Block has no parameters)
         self.assertEqual(info["parameters"], {})
@@ -228,8 +226,9 @@ class TestBlock(unittest.TestCase):
         #check description contains relevant info
         self.assertIn("Amplifies", info["description"])
 
-        #check shape (SISO block)
-        self.assertEqual(info["shape"], (1, 1))
+        #check port labels (Amplifier has dynamic ports)
+        self.assertIsNone(info["input_port_labels"])
+        self.assertIsNone(info["output_port_labels"])
 
         #check parameters include gain with default
         self.assertIn("gain", info["parameters"])

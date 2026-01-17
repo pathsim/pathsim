@@ -17,8 +17,10 @@ from ..optim.operator import DynamicOperator
 # BLOCKS ================================================================================
 
 class Differentiator(Block):
-    """Differentiates the input signal (SISO) using a first order transfer function 
-    with a pole at the origin which implements a high pass filter. 
+    """Differentiates the input signal. 
+
+    Uses a first order transfer function with a pole at the origin which implements 
+    a high pass filter. Supports vector input. 
         
     .. math::
         

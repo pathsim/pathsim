@@ -34,6 +34,9 @@ class ButterworthLowpassFilter(StateSpace):
         filter order
     """
 
+    input_port_labels = {"in":0}
+    output_port_labels = {"out":0}
+
     def __init__(self, Fc=100, n=2):
 
         #filter parameters
@@ -47,10 +50,6 @@ class ButterworthLowpassFilter(StateSpace):
         #rescale to actual bandwidth and make statespace model
         omega_c = 2*np.pi*self.Fc
         super().__init__(omega_c*A, omega_c*B, C, D)
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
 
 class ButterworthHighpassFilter(StateSpace):
@@ -68,6 +67,8 @@ class ButterworthHighpassFilter(StateSpace):
     n : int
         filter order
     """
+    input_port_labels = {"in":0}
+    output_port_labels = {"out":0}
 
     def __init__(self, Fc=100, n=2):
 
@@ -82,10 +83,6 @@ class ButterworthHighpassFilter(StateSpace):
         #rescale to actual bandwidth and make statespace model
         omega_c = 2*np.pi*self.Fc
         super().__init__(omega_c*A, omega_c*B, C, D)
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
 
 class ButterworthBandpassFilter(StateSpace):
@@ -103,6 +100,8 @@ class ButterworthBandpassFilter(StateSpace):
     n : int
         filter order
     """
+    input_port_labels = {"in":0}
+    output_port_labels = {"out":0}
 
     def __init__(self, Fc=[50, 100], n=2):
 
@@ -118,10 +117,6 @@ class ButterworthBandpassFilter(StateSpace):
 
         #initialize parent block
         super().__init__(*tf2ss(num, den))
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
 
 class ButterworthBandstopFilter(StateSpace):
@@ -139,6 +134,8 @@ class ButterworthBandstopFilter(StateSpace):
     n : int
         filter order
     """
+    input_port_labels = {"in":0}
+    output_port_labels = {"out":0}
 
     def __init__(self, Fc=[50, 100], n=2):
 
@@ -154,10 +151,6 @@ class ButterworthBandstopFilter(StateSpace):
 
         #initialize parent block
         super().__init__(*tf2ss(num, den))
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
 
 class AllpassFilter(StateSpace):
@@ -177,6 +170,8 @@ class AllpassFilter(StateSpace):
     n : int
         number of cascades
     """
+    input_port_labels = {"in":0}
+    output_port_labels = {"out":0}
 
     def __init__(self, fs=100, n=1):
 
@@ -201,7 +196,3 @@ class AllpassFilter(StateSpace):
 
         #initialize parent block
         super().__init__(omega_s*A, omega_s*B, C, D)
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})

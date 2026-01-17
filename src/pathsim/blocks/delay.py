@@ -17,8 +17,7 @@ from ..utils.adaptivebuffer import AdaptiveBuffer
 # BLOCKS ================================================================================
 
 class Delay(Block):
-    """Delays the input signal by a time constant 'tau' in seconds
-    using an adaptive rolling buffer.
+    """Delays the input signal by a time constant 'tau' in seconds. 
 
     Mathematically this block creates a time delay of the input signal like this:
 
@@ -36,6 +35,13 @@ class Delay(Block):
     required to be compatible with variable step solvers. It has a drawback however. 
     The order of the ode solver used will degrade when this block is used, due to 
     the interpolation.
+
+    
+    Note
+    ----
+    This block supports vector input, meaning we can have multiple parallel 
+    delay paths through this block.
+
 
     Example
     -------

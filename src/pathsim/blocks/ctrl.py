@@ -39,6 +39,12 @@ class PID(Block):
     you have discontinuities such as steps or square waves.
 
 
+    Note
+    ----
+    This block supports vector input, meaning we can have multiple parallel 
+    PID paths through this block.
+
+
     Example
     -------
     The block is initialized like this:

@@ -77,11 +77,18 @@ class Block:
         internal callable operator for dynamic (ODE) components of block
     """
 
+    input_port_labels = None
+    output_port_labels = None
+
     def __init__(self):
 
         #registers to hold input and output values
-        self.inputs = Register()
-        self.outputs = Register()
+        self.inputs = Register(
+            mapping=self.input_port_labels and self.input_port_labels.copy()
+            )
+        self.outputs = Register(
+            mapping=self.output_port_labels and self.output_port_labels.copy()
+            )
 
         #initialize integration engine as 'None' by default
         self.engine = None
@@ -245,16 +252,11 @@ class Block:
             if name not in ("self", "kwargs", "args")
             }
         
-        # Default initialization
-        blk = cls()
-
         return {
             "type": cls.__name__,
-            "description": cls.__doc__ or "",
-            "shape": blk.shape,
-            "size": blk.size,
-            "in_labels": blk.inputs._mapping,
-            "out_labels": blk.outputs._mapping,
+            "description": cls.__doc__,
+            "input_port_labels": cls.input_port_labels,
+            "output_port_labels": cls.output_port_labels,
             "parameters": params,
             }
 

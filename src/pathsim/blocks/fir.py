@@ -68,12 +68,12 @@ class FIR(Block):
         Internal scheduled event triggering the filter calculation.
     """
 
+    input_port_labels = {"in": 0}
+    output_port_labels = {"out": 0}
+
+
     def __init__(self, coeffs=[1.0], T=1, tau=0):
         super().__init__()
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
         #block params
         self.coeffs = np.array(coeffs)

@@ -39,11 +39,11 @@ class RandomNumberGenerator(Block):
         value in case `samplingrate` is provided
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(self, sampling_rate=None):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block parameter
         self.sampling_rate = sampling_rate 

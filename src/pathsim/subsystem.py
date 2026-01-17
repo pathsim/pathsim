@@ -60,6 +60,8 @@ class Interface(Block):
         port_map_out : dict[str: int]
             port alias mapping for block outputs
         """
+        self.input_port_labels = port_map_in
+        self.output_port_labels = port_map_out
 
         #build registers with mappings
         self.inputs = Register(mapping=port_map_in)

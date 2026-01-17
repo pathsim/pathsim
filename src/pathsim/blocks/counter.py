@@ -35,12 +35,12 @@ class Counter(Block):
         internal zero crossing event
     """
 
+    input_port_labels = {"in": 0}
+    output_port_labels = {"out": 0}
+    
+
     def __init__(self, start=0, threshold=0.0):
         super().__init__()
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
         self.start = start
         self.threshold = threshold

@@ -75,11 +75,11 @@ class Adder(Block):
         internal algebraic operator
     """
 
+    input_port_labels = None
+    output_port_labels = {"out":0}
+
     def __init__(self, operations=None):
         super().__init__()
-
-        #outputs mapping
-        self.outputs = Register(mapping={"out":0})
 
         #allowed arithmetic operations
         self._ops = {"+":1.0, "-":-1.0, "0":0.0}

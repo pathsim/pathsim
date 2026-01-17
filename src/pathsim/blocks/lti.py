@@ -211,14 +211,6 @@ class TransferFunctionPRC(StateSpace):
         constant term of transfer function
     """
 
-    #number of max input and output ports
-    _n_in_max = 1
-    _n_out_max = 1
-
-    #maps for input and output port labels to indices
-    _port_map_in = {"in": 0}
-    _port_map_out = {"out": 0}
-
     def __init__(self, Poles=[], Residues=[], Const=0.0):
 
         #parameters of transfer function in pole-residue-const form
@@ -323,14 +315,6 @@ class TransferFunctionNumDen(StateSpace):
     Den : array_like
         denominator polynomial coefficients
     """
-
-    #number of max input and output ports
-    _n_in_max = 1
-    _n_out_max = 1
-
-    #maps for input and output port labels to indices
-    _port_map_in = {"in": 0}
-    _port_map_out = {"out": 0}
 
     def __init__(self, Num=[1], Den=[1, 1]):
 

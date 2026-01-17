@@ -39,11 +39,11 @@ class WhiteNoise(Block):
         scheduled event for periodic sampling
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(self, spectral_density=1, sampling_rate=None):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block parameters
         self.spectral_density = spectral_density
@@ -162,11 +162,11 @@ class PinkNoise(Block):
            258-263.
     """
 
+    input_port_labels = {}
+    output_port_labels = {"out":0}
+
     def __init__(self, spectral_density=1, num_octaves=16, sampling_rate=None):
         super().__init__()
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
             
         #block parameters
         self.spectral_density = spectral_density

@@ -43,12 +43,12 @@ class Comparator(Block):
         internal zero crossing event
     """
 
+    input_port_labels = {"in": 0}
+    output_port_labels = {"out":0}
+
+
     def __init__(self, threshold=0, tolerance=1e-4, span=[-1, 1]):
         super().__init__()
-
-        #block io with port labels
-        self.inputs = Register(mapping={"in": 0})
-        self.outputs = Register(mapping={"out": 0})
 
         #block parameters
         self.threshold = threshold
