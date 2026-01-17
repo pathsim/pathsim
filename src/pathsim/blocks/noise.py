@@ -17,21 +17,21 @@ from ..events.schedule import Schedule
 # NOISE SOURCE BLOCKS ===================================================================
 
 class WhiteNoise(Block):
-    """White noise source with uniform spectral density. Samples from 
-    distribution with 'sampling_rate' and holds noise values constant 
+    """White noise source with uniform spectral density. Samples from
+    distribution with 'sampling_period' and holds noise values constant
     for time bins (zero-order-hold).
 
-    If no 'sampling_rate' (None) is specified, every simulation timestep 
+    If no 'sampling_period' (None) is specified, every simulation timestep
     gets a new noise value. This is the default setting.
-    
+
     Parameters
     ----------
     spectral_density : float
         noise spectral density
     noise : float
         internal noise value
-    sampling_rate : float, None
-        frequency with which the noise is sampled 
+    sampling_period : float, None
+        time between noise samples
 
     Attributes
     ----------
@@ -42,29 +42,29 @@ class WhiteNoise(Block):
     input_port_labels = {}
     output_port_labels = {"out":0}
 
-    def __init__(self, spectral_density=1, sampling_rate=None):
+    def __init__(self, spectral_density=1, sampling_period=None):
         super().__init__()
 
         #block parameters
         self.spectral_density = spectral_density
-        self.sampling_rate = sampling_rate 
+        self.sampling_period = sampling_period
 
         #sampling produces discrete time behavior
-        if sampling_rate is None:
+        if sampling_period is None:
 
             #initial sample for non-discrete block
             self._sample = np.random.rand()
 
         else:
-            
+
             #internal scheduled list event
             def _set(t):
-                self.outputs[0] = self._random(self.sampling_rate)
+                self.outputs[0] = self._random(self.sampling_period)
 
             self.events = [
                 Schedule(
                     t_start=0,
-                    t_period=sampling_rate,
+                    t_period=sampling_period,
                     func_act=_set
                     )
                 ]
@@ -89,7 +89,7 @@ class WhiteNoise(Block):
         dt : float
             integration timestep
         """
-        if self.sampling_rate is None:
+        if self.sampling_period is None:
             self.outputs[0] = self._random(dt)
            
 
@@ -134,17 +134,17 @@ class PinkNoise(Block):
     
     Note
     ----
-    If no 'sampling_rate' (None) is specified, every simulation timestep 
+    If no 'sampling_period' (None) is specified, every simulation timestep
     gets a new noise value. This is the default setting.
-    
+
     Parameters
     ----------
     spectral_density : float
         noise spectral density :math:`S_0`
     num_octaves : int
         number of octaves (levels of randomness), default is 16
-    sampling_rate : float, None
-        frequency with which the noise is sampled 
+    sampling_period : float, None
+        time between noise samples 
 
     Attributes
     ----------
@@ -165,29 +165,29 @@ class PinkNoise(Block):
     input_port_labels = {}
     output_port_labels = {"out":0}
 
-    def __init__(self, spectral_density=1, num_octaves=16, sampling_rate=None):
+    def __init__(self, spectral_density=1, num_octaves=16, sampling_period=None):
         super().__init__()
-            
+
         #block parameters
         self.spectral_density = spectral_density
         self.num_octaves = num_octaves
-        self.sampling_rate = sampling_rate
+        self.sampling_period = sampling_period
         self.n_samples = 0
 
         # Initialize the random values for each octave
         self.octave_values = np.random.normal(0, 1, self.num_octaves)
 
         #sampling produces discrete time behavior
-        if sampling_rate is not None:
-            
+        if sampling_period is not None:
+
             #internal scheduled list event
             def _set(t):
-                self.outputs[0] = self._random(self.sampling_rate)
+                self.outputs[0] = self._random(self.sampling_period)
 
             self.events = [
                 Schedule(
                     t_start=0,
-                    t_period=sampling_rate,
+                    t_period=sampling_period,
                     func_act=_set
                 )
             ]
@@ -256,7 +256,7 @@ class PinkNoise(Block):
         dt : float
             integration timestep
         """
-        if self.sampling_rate is None:
+        if self.sampling_period is None:
             self.outputs[0] = self._random(dt)
 
             
