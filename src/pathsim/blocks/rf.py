@@ -43,8 +43,7 @@ from .lti import StateSpace
 
 
 class RFNetwork(StateSpace):
-    """
-    N-port RF network linear time invariant (LTI) multi input multi output (MIMO) state-space model.
+    """N-port RF network linear time invariant (LTI) multi input multi output (MIMO) state-space model.
 
     Uses Vector Fitting for rational approximation of the frequency response using poles and residues.
     The resulting approximation has guaranteed stable poles that are real or come in complex conjugate pairs.

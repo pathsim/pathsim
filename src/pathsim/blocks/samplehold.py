@@ -3,8 +3,6 @@
 ##                              SAMPLE AND HOLD BLOCK
 ##                             (blocks/samplehold.py)
 ##
-##                                Milan Rother 2024
-##
 #########################################################################################
 
 # IMPORTS ===============================================================================
@@ -16,8 +14,7 @@ from ..events.schedule import Schedule
 # MIXED SIGNAL BLOCKS ===================================================================
 
 class SampleHold(Block):
-    """Sample and hold stage that samples the inputs periodically using 
-    scheduled events and produces them at the output.
+    """Samples the inputs periodically and produces them at the output.
     
     Parameters
     ----------

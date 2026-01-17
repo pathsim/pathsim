@@ -22,8 +22,9 @@ from .._constants import COLORS_ALL
 # BLOCKS FOR DATA RECORDING =============================================================
 
 class Spectrum(Block):
-    """Block for fourier spectrum analysis (basically a spectrum analyzer), computes 
-    continuous time running fourier transform (RFT) of the incoming signal.
+    """Block for fourier spectrum analysis (spectrum analyzer).
+
+    Computes continuous time running fourier transform (RFT) of the incoming signal.
     
     A time threshold can be set by 't_wait' to start recording data only after the 
     simulation time is larger then the specified waiting time, i.e. 't - t_wait > dt'. 

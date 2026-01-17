@@ -21,7 +21,12 @@ from .._constants import TOLERANCE
 # GENERIC SOURCE BLOCKS =================================================================
 
 class Constant(Block):
-    """Produces a constant output signal (SISO)
+    """Produces a constant output signal (SISO).
+
+    .. math::
+
+        y(t) = const.
+
         
     Parameters
     ----------
@@ -62,8 +67,7 @@ class Constant(Block):
 
 
 class Source(Block):
-    """Source that produces an arbitrary time dependent output, 
-    defined by the func (callable).
+    """Source that produces an arbitrary time dependent output defined by `func` (callable).
 
     .. math::
     
@@ -700,8 +704,7 @@ class ChirpSource(ChirpPhaseNoiseSource):
 # SPECIAL DISCRETE SOURCE BLOCKS ========================================================
 
 class PulseSource(Block):
-    """Generates a periodic pulse waveform with defined rise and fall times
-    using a hybrid approach with scheduled events and continuous updates.
+    """Generates a periodic pulse waveform with defined rise and fall times.
 
     Scheduled events trigger phase changes (low, rising, high, falling),
     and the `update` method calculates the output value based on the
@@ -1025,7 +1028,7 @@ class SquareWaveSource(Block):
 
 
 class StepSource(Block):
-    """Discrete time unit step source block.
+    """Discrete time unit step (or multi step) source block.
     
     Utilizes a scheduled event to set the block output 
     to the specified output levels at the defined event times.

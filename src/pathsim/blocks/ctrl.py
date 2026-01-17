@@ -181,8 +181,7 @@ class PID(Block):
 
 
 class AntiWindupPID(PID):
-    """Proportional-Integral-Differntiation (PID) controller with tracking 
-    anti-windup mechanism (back-calculation).
+    """Proportional-Integral-Differntiation (PID) controller with anti-windup mechanism (back-calculation).
     
     Anti-windup mechanisms are needed when the magnitude of the control signal 
     from the PID controller is limited by some real world saturation. In these cases, 

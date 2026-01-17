@@ -16,8 +16,9 @@ from ..optim.operator import Operator
 # SISO BLOCKS ===========================================================================
 
 class Amplifier(Block):
-    """Amplifies the input signal by 
-    multiplication with a constant gain term like this:
+    """Amplifies the input signal by multiplication with a constant gain term.
+
+    Like this:
 
     .. math::
         

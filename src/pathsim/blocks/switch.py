@@ -13,8 +13,7 @@ from ._block import Block
 # BLOCK DEFINITION ======================================================================
 
 class Switch(Block):
-    """Switch block that selects between its inputs and copies 
-    one of them to the output. 
+    """Switch block that selects between its inputs.
 
     Example
     -------
