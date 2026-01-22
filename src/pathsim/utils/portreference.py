@@ -80,7 +80,7 @@ class PortReference:
                 self.block.inputs._map(p) for p in self.ports
                 ], dtype=np.intp)
 
-            # Resize register to accomodate indices
+            # Resize register to accommodate indices
             max_idx = self._input_indices.max()
             self.block.inputs.resize(max_idx + 1)
                                     
@@ -98,7 +98,7 @@ class PortReference:
                 self.block.outputs._map(p) for p in self.ports
                 ], dtype=np.intp)
 
-            # Resize register to accomodate indices
+            # Resize register to accommodate indices
             max_idx = self._output_indices.max()
             self.block.outputs.resize(max_idx + 1)
         

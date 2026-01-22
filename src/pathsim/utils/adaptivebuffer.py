@@ -34,7 +34,7 @@ class AdaptiveBuffer:
     buffer_v : deque
         deque that collects the value data for buffering
     ns : int
-        savety for buffer truncation
+        safety for buffer truncation
     """
 
     def __init__(self, delay):
@@ -44,7 +44,7 @@ class AdaptiveBuffer:
         self.buffer_t = deque()
         self.buffer_v = deque()
         
-        #savety for buffer truncation
+        #safety for buffer truncation
         self.ns = 5
 
 
@@ -67,7 +67,7 @@ class AdaptiveBuffer:
         self.buffer_t.append(t)
         self.buffer_v.append(value)
         
-        #remove values after savety from buffer -> enable interpolation
+        #remove values after safety from buffer -> enable interpolation
         if len(self.buffer_t) > self.ns:
             while t - self.buffer_t[self.ns] > self.delay:
                 self.buffer_t.popleft()

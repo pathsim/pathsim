@@ -19,7 +19,7 @@ from ..events.zerocrossing import ZeroCrossing, ZeroCrossingUp, ZeroCrossingDown
 class Counter(Block):
     """Counts the number of detected bidirectional threshold crossings.
 
-    Uses zero-crossing events for the detection and and sets the output 
+    Uses zero-crossing events for the detection and sets the output 
     accordingly.
 
     Parameters

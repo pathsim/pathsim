@@ -206,7 +206,7 @@ class Connection:
 
 
     def _validate_ports(self):
-        """Check the existance of the input and output ports of 
+        """Check the existence of the input and output ports of 
         the defined source and target blocks. 
 
         Utilizes the `PortReference._validate_output_ports` and 

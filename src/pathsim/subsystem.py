@@ -354,8 +354,8 @@ class Subsystem(Block):
 
         This is done by linearizing the internal 'Operator' and 'DynamicOperator' 
         instances of all the internal blocks of the subsystem in the current system 
-        operating point. The operators create 1st order tayler approximations 
-        internally and use them on subsequent calls after linarization.
+        operating point. The operators create 1st order taylor approximations 
+        internally and use them on subsequent calls after linearization.
     
         Recursively traverses down the hierarchy for nested subsystems and linearizes 
         all of them.

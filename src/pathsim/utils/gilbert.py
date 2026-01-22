@@ -23,13 +23,13 @@ def gilbert_realization(Poles=[], Residues=[], Const=0.0, tolerance=1e-9):
 
     .. math::
 
-        \\mathbf{H}(s) = \\mathmf{D} + \\sum_{n=1}^N \\frac{\\mathbf{R}_n}{s - p_n} )
+        \\mathbf{H}(s) = \\mathbf{D} + \\sum_{n=1}^N \\frac{\\mathbf{R}_n}{s - p_n}
     
     statespace form:
         
     .. math::
 
-        \\mathbf{H}(s) = \\mathbf{C} (s \\mathbf{I} - \\mathbf{A})^{-1} * \\mathbf{B} + \\mathbf{H} 
+        \\mathbf{H}(s) = \\mathbf{C} (s \\mathbf{I} - \\mathbf{A})^{-1} \\mathbf{B} + \\mathbf{D} 
     
     Notes
     -----  

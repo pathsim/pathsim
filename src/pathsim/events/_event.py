@@ -157,7 +157,7 @@ class Event:
 
 
     def detect(self, t):
-        """Evaluate the event function and decide if an event has occured. 
+        """Evaluate the event function and decide if an event has occurred. 
         Can also use the history of the event function evaluation from 
         before the timestep.
 

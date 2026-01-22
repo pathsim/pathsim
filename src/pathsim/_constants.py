@@ -27,7 +27,7 @@ SOL_TOLERANCE_FPI = 1e-9       # tolerance for optimizer convergence (implicit s
 SOL_ITERATIONS_MAX = 200       # max number of optimizer iterations (for standalone implicit solvers)
 SOL_SCALE_MIN = 0.1            # min allowed timestep rescale factor (adaptive solvers)
 SOL_SCALE_MAX = 10             # max allowed timestep rescale factor (adaptive solvers)
-SOL_BETA = 0.9                 # savety for timestep control (adaptive solvers)
+SOL_BETA = 0.9                 # safety for timestep control (adaptive solvers)
 
 
 # optimizer default constants ----------------------------------------------------
