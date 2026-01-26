@@ -316,6 +316,10 @@ class Block:
         if self.op_alg: self.op_alg.reset()
         if self.op_dyn: self.op_dyn.reset()
 
+        #reset internal events (if there are any)
+        for event in self.events:
+            event.reset()
+
 
     def linearize(self, t):
         """Linearize the algebraic and dynamic components of the block.
