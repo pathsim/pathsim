@@ -24,6 +24,7 @@ class ESDIRK85(DiagonallyImplicitRungeKutta):
     * Stages: 16 (1 explicit, 15 implicit)
     * Adaptive timestep
     * L-stable, stiffly accurate
+    * Stage order 2
 
     Note
     ----

@@ -26,6 +26,7 @@ class ESDIRK43(DiagonallyImplicitRungeKutta):
     * Stages: 6 (1 explicit, 5 implicit)
     * Adaptive timestep
     * L-stable, stiffly accurate
+    * Stage order 2
 
     Note
     ----

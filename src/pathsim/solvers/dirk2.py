@@ -15,19 +15,19 @@ from ._rungekutta import DiagonallyImplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class DIRK2(DiagonallyImplicitRungeKutta):
-    """Two-stage, 2nd order DIRK method. A-stable, SSP-optimal, symplectic.
+    """Two-stage, 2nd order DIRK method. L-stable, SSP-optimal, symplectic.
 
     Characteristics
     ---------------
     * Order: 2
     * Stages: 2 (implicit)
     * Fixed timestep
-    * A-stable, SSP-optimal, symplectic
+    * L-stable, SSP-optimal, symplectic
 
     Note
     ----
-    The simplest multi-stage implicit Runge-Kutta method. A-stability makes
-    it safe for moderately stiff block diagrams, and the symplectic property
+    The simplest multi-stage implicit Runge-Kutta method. L-stability
+    fully damps parasitic high-frequency modes, and the symplectic property
     preserves Hamiltonian structure when the dynamics are conservative. Two
     implicit stages per step is relatively cheap. For higher accuracy on
     stiff systems, use ``DIRK3`` or the adaptive ``ESDIRK43``.

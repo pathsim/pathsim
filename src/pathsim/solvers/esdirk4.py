@@ -15,7 +15,7 @@ from ._rungekutta import DiagonallyImplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class ESDIRK4(DiagonallyImplicitRungeKutta):
-    """Six-stage, 4th order ESDIRK method. A-stable with explicit first stage.
+    """Six-stage, 4th order ESDIRK method. L-stable and stiffly accurate.
 
     No embedded error estimator; fixed timestep only.
 
@@ -24,7 +24,8 @@ class ESDIRK4(DiagonallyImplicitRungeKutta):
     * Order: 4
     * Stages: 6 (1 explicit, 5 implicit)
     * Fixed timestep
-    * A-stable
+    * L-stable, stiffly accurate
+    * Stage order 2
 
     Note
     ----
@@ -32,8 +33,9 @@ class ESDIRK4(DiagonallyImplicitRungeKutta):
     predetermined (e.g. real-time or hardware-in-the-loop contexts). The
     explicit first stage reuses the last function evaluation from the
     previous step, saving one implicit solve per step compared to a fully
-    implicit DIRK. For adaptive stepping, use ``ESDIRK43`` which adds an
-    embedded error estimator at the same stage count.
+    implicit DIRK. L-stability and stiff accuracy ensure full damping of
+    parasitic high-frequency modes. For adaptive stepping, use ``ESDIRK43``
+    which adds an embedded error estimator at the same stage count.
 
     References
     ----------
