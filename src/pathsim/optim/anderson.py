@@ -21,22 +21,44 @@ from .._constants import (
 # CLASS ================================================================================
 
 class Anderson:
-    """Class for accelerated fixed-point iteration through anderson acceleration. 
-    Solves a nonlinear set of equations given in the fixed-point form:
+    """Anderson acceleration for fixed-point iteration.
 
-        x = g(x)
+    Solves nonlinear equations in fixed-point form :math:`x = g(x)` by
+    computing the next iterate as a linear combination of previous iterates
+    whose coefficients minimise the least-squares residual.
 
-    Anderson Accelerstion tracks the evolution of the solution from the previous 
-    iterations. The next step in the iteration is computed as a linear combination 
-    of the previous iterates. The coefficients are computed to minimize the least 
-    squares error of the fixed-point problem.
+    .. math::
+
+        x_{k+1} = \\sum_{i=0}^{m_k} \\alpha_i^{(k)}\\, g(x_{k-m_k+i})
+        \\quad\\text{with}\\quad
+        \\alpha^{(k)} = \\arg\\min \\bigl\\|\\sum_i \\alpha_i\\, r_{k-m_k+i}\\bigr\\|
+
+    where :math:`r_k = g(x_k) - x_k` and :math:`m_k \\le m` is the current
+    buffer depth.
+
+    In PathSim this class is the inner fixed-point solver used by the
+    simulation engine to resolve algebraic loops (cycles in the block
+    diagram). Each loop-closing ``ConnectionBooster`` owns an ``Anderson``
+    instance that accelerates convergence of the fixed-point iteration
+    over the loop. The buffer depth ``m`` controls how many previous
+    iterates are retained; larger values improve convergence on difficult
+    loops at the cost of a small least-squares solve per iteration.
 
     Parameters
     ----------
     m : int
-        buffer length
+        buffer depth (number of stored iterates)
     restart : bool
-        clear buffer when full
+        if True, clear the buffer once it reaches depth ``m``
+
+    References
+    ----------
+    .. [1] Anderson, D. G. (1965). "Iterative Procedures for Nonlinear
+           Integral Equations". Journal of the ACM, 12(4), 547--560.
+           :doi:`10.1145/321296.321305`
+    .. [2] Walker, H. F., & Ni, P. (2011). "Anderson Acceleration for
+           Fixed-Point Iterations". SIAM Journal on Numerical Analysis,
+           49(4), 1715--1735. :doi:`10.1137/10078356X`
     """
 
     def __init__(self, m=OPT_HISTORY, restart=OPT_RESTART):
@@ -196,12 +218,34 @@ class Anderson:
 
 
 class NewtonAnderson(Anderson):
-    """Modified class for hybrid anderson acceleration that can use a jacobian 'jac' of 
-    the function 'g' for a newton step before the fixed point step for the initial 
-    estimate before applying the anderson acceleration.
+    """Hybrid Newton--Anderson fixed-point solver.
 
-    If a jacobian 'jac' is available, this significantly improves the convergence 
-    (speed and robustness) of the solution.
+    Extends :class:`Anderson` by prepending a Newton step when a Jacobian
+    of :math:`g` is available.  The Newton step
+
+    .. math::
+
+        \\tilde{x} = x - (J_g - I)^{-1}\\,(g(x) - x)
+
+    provides a quadratically convergent initial correction; the subsequent
+    Anderson mixing step then stabilises the iteration and damps
+    oscillations.
+
+    In PathSim this solver is used inside every implicit ODE integration
+    engine (BDF, DIRK, ESDIRK).  When a block provides a local Jacobian
+    (e.g. ``ODE`` or ``LTI`` blocks), the Newton pre-step yields much
+    faster convergence of the implicit update equation, reducing the
+    number of fixed-point iterations per timestep.  Without a Jacobian the
+    solver falls back to pure Anderson acceleration.
+
+    References
+    ----------
+    .. [1] Anderson, D. G. (1965). "Iterative Procedures for Nonlinear
+           Integral Equations". Journal of the ACM, 12(4), 547--560.
+           :doi:`10.1145/321296.321305`
+    .. [2] Walker, H. F., & Ni, P. (2011). "Anderson Acceleration for
+           Fixed-Point Iterations". SIAM Journal on Numerical Analysis,
+           49(4), 1715--1735. :doi:`10.1137/10078356X`
     """
 
 
