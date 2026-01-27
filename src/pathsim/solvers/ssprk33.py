@@ -15,40 +15,40 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class SSPRK33(ExplicitRungeKutta):
-    """Three-stage, 3rd order Strong Stability Preserving (SSP) explicit Runge-Kutta method.
+    """Three-stage, 3rd order optimal SSP Runge-Kutta method.
 
-    Offers higher accuracy than SSPRK22 while maintaining the SSP property. This is the
-    optimal 3-stage 3rd order SSP method. A popular choice for problems where TVD
-    properties are important or when a simple, stable 3rd order explicit method is needed.
+    The unique optimal three-stage, 3rd order SSP scheme. Commonly paired
+    with WENO and ENO spatial discretisations for hyperbolic conservation
+    laws.
 
-    Characteristics:
-        * Order: 3
-        * Stages: 3
-        * Explicit (SSP)
-        * Fixed timestep only
-        * SSP coefficient: :math:`C = 1`
-        * Optimal 3-stage SSP method
-        * Good stability properties for an explicit 3rd order method
+    Characteristics
+    ---------------
+    * Order: 3
+    * Stages: 3
+    * Explicit, fixed timestep
+    * SSP coefficient :math:`\\mathcal{C} = 1`
 
-    When to Use
-    -----------
-    * **Hyperbolic conservation laws**: Standard choice for higher-order TVD schemes
-    * **Higher accuracy than SSPRK22**: When 3rd order accuracy is needed with SSP
-    * **WENO schemes**: Common pairing with weighted essentially non-oscillatory methods
-    * **Compressible flow**: Euler and Navier-Stokes equations with shocks
-
-    **Recommended** as the standard SSP method for most applications requiring 3rd order
-    accuracy. For enhanced stability, consider SSPRK34 (4 stages).
+    Note
+    ----
+    The standard SSP time integrator for method-of-lines PDE discretisations
+    inside ``ODE`` blocks. If the spatial operator is TVD under forward Euler,
+    this method preserves that property at the same timestep restriction.
+    When stability is borderline, ``SSPRK34`` allows roughly twice the
+    timestep at the cost of one extra stage.
 
     References
     ----------
-    .. [1] Shu, C. W., & Osher, S. (1988). "Efficient implementation of essentially
-           non-oscillatory shock-capturing schemes". Journal of Computational Physics,
-           77(2), 439-471.
-    .. [2] Gottlieb, S., Shu, C. W., & Tadmor, E. (2001). "Strong stability-preserving
-           high-order time discretization methods". SIAM Review, 43(1), 89-112.
-    .. [3] Gottlieb, S., Ketcheson, D. I., & Shu, C. W. (2011). "Strong Stability
-           Preserving Runge-Kutta and Multistep Time Discretizations". World Scientific.
+    .. [1] Shu, C.-W., & Osher, S. (1988). "Efficient implementation of
+           essentially non-oscillatory shock-capturing schemes". Journal of
+           Computational Physics, 77(2), 439-471.
+           :doi:`10.1016/0021-9991(88)90177-5`
+    .. [2] Gottlieb, S., Shu, C.-W., & Tadmor, E. (2001). "Strong
+           stability-preserving high-order time discretization methods".
+           SIAM Review, 43(1), 89-112.
+           :doi:`10.1137/S003614450036757X`
+    .. [3] Gottlieb, S., Ketcheson, D. I., & Shu, C.-W. (2011). "Strong
+           Stability Preserving Runge-Kutta and Multistep Time
+           Discretizations". World Scientific. :doi:`10.1142/7498`
 
     """
 

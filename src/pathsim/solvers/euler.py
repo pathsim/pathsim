@@ -13,45 +13,37 @@ from ._solver import ExplicitSolver, ImplicitSolver
 # SOLVERS ==============================================================================
 
 class EUF(ExplicitSolver):
-    """Explicit Forward Euler (FE) integration method.
-
-    This is the simplest explicit numerical integration method. It is first-order
-    accurate (:math:`O(h)`) and generally not suitable for stiff problems due to its
-    limited stability region.
-
-    Method:
+    """Explicit forward Euler method. First-order, single-stage.
 
     .. math::
 
-        x_{n+1} = x_n + dt \\cdot f(x_n, t_n)
+        x_{n+1} = x_n + h \\, f(x_n, t_n)
 
     Characteristics
     ---------------
     * Order: 1
     * Stages: 1
-    * Explicit
-    * Fixed timestep only
+    * Explicit, fixed timestep
     * Not A-stable
-    * Low accuracy and stability, but computationally very cheap.
 
-    When to Use
-    -----------
-    * **Educational purposes**: Ideal for teaching basic numerical integration concepts
-    * **Very smooth problems**: When the function is extremely smooth and well-behaved
-    * **Rapid prototyping**: Quick initial testing before applying more sophisticated methods
-    * **Resource-constrained scenarios**: When computational cost must be minimized
-
-    **Not recommended** for production use, stiff problems, or when accuracy is important.
+    Note
+    ----
+    The cheapest solver per step but also the least accurate. Its small stability
+    region requires very small timesteps for moderately dynamic block diagrams,
+    which usually makes higher-order methods more efficient overall. Prefer
+    ``RK4`` for fixed-step or ``RKDP54`` for adaptive integration of non-stiff
+    systems. Only practical when computational cost per step must be absolute
+    minimum and accuracy is secondary.
 
     References
     ----------
-    .. [1] Euler, L. (1768). "Institutionum calculi integralis". Impensis Academiae
-           Imperialis Scientiarum, Vol. 1.
-    .. [2] Butcher, J. C. (2016). "Numerical Methods for Ordinary Differential Equations".
-           John Wiley & Sons, 3rd Edition.
-    .. [3] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
+    .. [1] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
+           Differential Equations I: Nonstiff Problems". Springer Series in
+           Computational Mathematics, Vol. 8.
+           :doi:`10.1007/978-3-540-78862-1`
+    .. [2] Butcher, J. C. (2016). "Numerical Methods for Ordinary Differential
+           Equations". John Wiley & Sons, 3rd Edition.
+           :doi:`10.1002/9781119121534`
 
     """
 
@@ -87,49 +79,40 @@ class EUF(ExplicitSolver):
 
 
 class EUB(ImplicitSolver):
-    """Implicit Backward Euler (BE) integration method.
-
-    This is the simplest implicit numerical integration method. It is first-order
-    accurate (:math:`O(h)`) and is A-stable and L-stable, making it suitable for very
-    stiff problems where stability is paramount, although its low order limits
-    accuracy for non-stiff problems or when high precision is required.
-
-    Method:
+    """Implicit backward Euler method. First-order, A-stable and L-stable.
 
     .. math::
 
-        x_{n+1} = x_n + dt \\cdot f(x_{n+1}, t_{n+1})
+        x_{n+1} = x_n + h \\, f(x_{n+1}, t_{n+1})
 
-    This implicit equation is solved iteratively using the internal optimizer.
+    The implicit equation is solved iteratively by the internal optimizer.
 
     Characteristics
     ---------------
     * Order: 1
-    * Stages: 1 (Implicit)
-    * Implicit
-    * Fixed timestep only
+    * Stages: 1 (implicit)
+    * Fixed timestep
     * A-stable, L-stable
-    * Very stable, suitable for stiff problems, but low accuracy.
 
-    When to Use
-    -----------
-    * **Highly stiff problems**: Excellent stability for very stiff ODEs
-    * **Robustness over accuracy**: When stability is more critical than precision
-    * **Long-time integration**: For simulations over very long time periods where stability matters
-    * **Initial testing of stiff systems**: Simple method to verify problem setup
-
-    **Trade-off**: Sacrifices accuracy for exceptional stability. For higher accuracy on
-    stiff problems, consider BDF or ESDIRK methods.
+    Note
+    ----
+    Maximum stability at the cost of accuracy. L-stability fully damps
+    parasitic high-frequency modes, making this a safe fallback for very stiff
+    block diagrams (e.g. high-gain PID loops or fast electrical dynamics coupled
+    to slow mechanical plant). Because each step requires solving a nonlinear
+    equation, the cost per step is higher than explicit methods. For better
+    accuracy on stiff systems, use ``BDF2`` (fixed-step) or ``ESDIRK43``
+    (adaptive).
 
     References
     ----------
-    .. [1] Curtiss, C. F., & Hirschfelder, J. O. (1952). "Integration of stiff equations".
-           Proceedings of the National Academy of Sciences, 38(3), 235-243.
-    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential Equations II:
-           Stiff and Differential-Algebraic Problems". Springer Series in Computational
-           Mathematics, Vol. 14.
-    .. [3] Butcher, J. C. (2016). "Numerical Methods for Ordinary Differential Equations".
-           John Wiley & Sons, 3rd Edition.
+    .. [1] Curtiss, C. F., & Hirschfelder, J. O. (1952). "Integration of stiff
+           equations". Proceedings of the National Academy of Sciences, 38(3),
+           235-243. :doi:`10.1073/pnas.38.3.235`
+    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential
+           Equations II: Stiff and Differential-Algebraic Problems". Springer
+           Series in Computational Mathematics, Vol. 14.
+           :doi:`10.1007/978-3-642-05221-7`
 
     """
 

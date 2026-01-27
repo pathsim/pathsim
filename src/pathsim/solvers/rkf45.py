@@ -15,45 +15,35 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class RKF45(ExplicitRungeKutta):
-    """Six-stage, 4th order explicit Runge-Kutta-Fehlberg method.
+    """Runge-Kutta-Fehlberg 4(5) pair. Six stages, 4th order propagation with
+    5th order error estimate.
 
-    Features an embedded 5th order method. The difference between the 5th and 4th order
-    results provides a 5th order error estimate. Typically, the 4th order solution is
-    propagated (local extrapolation available). A classic adaptive step size method,
-    though often superseded in efficiency by Dormand-Prince methods.
+    The historically first widely-used embedded pair for automatic step-size
+    control. The 4th order solution is propagated; the difference to the 5th
+    order solution provides a local error estimate.
 
     Characteristics
     ---------------
-    * Order: 4 (Propagating solution)
-    * Embedded Order: 5 (Error estimation)
+    * Order: 4 (propagating) / 5 (error estimate)
     * Stages: 6
-    * Explicit
-    * Adaptive timestep
-    * Classic adaptive method, good for moderate accuracy
-
-    When to Use
-    -----------
-    * **Moderate accuracy requirements**: Good balance for many engineering applications
-    * **Well-established benchmarks**: When comparing against historical results
-    * **Non-stiff smooth problems**: Standard choice for a wide range of ODEs
+    * Explicit, adaptive timestep
 
     Note
     ----
-    While this is a classic method, RKDP54 or RKCK54 generally offer better efficiency
-    for the same computational cost. Consider RKDP54 or RKCK54 for new applications unless 
-    specific properties of RKF45 are required.
+    Largely superseded by the Dormand-Prince (``RKDP54``) and Cash-Karp
+    (``RKCK54``) pairs, which achieve better accuracy per function evaluation
+    on most problems. Still useful for reproducing legacy results or when
+    comparing against published benchmarks that used RKF45.
 
     References
     ----------
-    .. [1] Fehlberg, E. (1969). "Low-order classical Runge-Kutta formulas with stepsize
-           control and their application to some heat transfer problems". NASA Technical
-           Report TR R-315.
-    .. [2] Fehlberg, E. (1970). "Klassische Runge-Kutta-Formeln vierter und niedrigerer
-           Ordnung mit Schrittweiten-Kontrolle und ihre Anwendung auf Wärmeleitungsprobleme".
-           Computing, 6(1-2), 61-71.
-    .. [3] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
+    .. [1] Fehlberg, E. (1969). "Low-order classical Runge-Kutta formulas
+           with stepsize control and their application to some heat transfer
+           problems". NASA Technical Report TR R-315.
+    .. [2] Fehlberg, E. (1970). "Klassische Runge-Kutta-Formeln vierter und
+           niedrigerer Ordnung mit Schrittweiten-Kontrolle und ihre Anwendung
+           auf Wärmeleitungsprobleme". Computing, 6(1-2), 61-71.
+           :doi:`10.1007/BF02241732`
 
     """
 

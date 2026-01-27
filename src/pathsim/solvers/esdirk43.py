@@ -17,39 +17,37 @@ from ._rungekutta import DiagonallyImplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class ESDIRK43(DiagonallyImplicitRungeKutta):
-    """Six-stage, 4th order Embedded Singly Diagonally Implicit Runge-Kutta (ESDIRK) method.
-
-    Features an embedded 3rd order method for adaptive step size control. The first stage is
-    explicit. L-stable and stiffly accurate, making it excellent for stiff problems requiring
-    moderate-to-high accuracy with adaptive timestepping.
+    """Six-stage, 4th order ESDIRK method with embedded 3rd order error
+    estimate. L-stable and stiffly accurate.
 
     Characteristics
     ---------------
-    * Order: 4
-    * Embedded Order: 3
-    * Stages: 6 (1 Explicit, 5 Implicit)
-    * Implicit (ESDIRK)
+    * Order: 4 (propagating) / 3 (embedded)
+    * Stages: 6 (1 explicit, 5 implicit)
     * Adaptive timestep
-    * L-stable
-    * Stiffly accurate
+    * L-stable, stiffly accurate
 
-    When to Use
-    -----------
-    * **Stiff problems with adaptive stepping**: Excellent default for stiff ODEs
-    * **Moderate-to-high accuracy**: 4th order with good error control
-    * **Damping high frequencies**: L-stability damps spurious oscillations
-    * **General-purpose stiff solver**: Reliable choice for most stiff applications
-
-    **Recommended** as a default adaptive stiff solver. For very high accuracy, use ESDIRK54.
-    For non-stiff problems, RKDP54 is more efficient.
+    Note
+    ----
+    Recommended default for stiff block diagrams. L-stability damps
+    high-frequency parasitic modes that arise from stiff subsystems (e.g.
+    PID controllers with large derivative gain, fast electrical or chemical
+    dynamics). The adaptive step-size control concentrates computational
+    effort where the solution changes rapidly. For non-stiff systems,
+    ``RKDP54`` avoids the implicit solve cost and is more efficient. For
+    tighter tolerances on stiff problems, ``ESDIRK54`` provides 5th order
+    accuracy.
 
     References
     ----------
-    .. [1] Kennedy, C. A., & Carpenter, M. H. (2019). "Diagonally implicit Runge-Kutta
-           methods for stiff ODEs". Applied Numerical Mathematics, 146, 221-244.
-    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential Equations II:
-           Stiff and Differential-Algebraic Problems". Springer Series in Computational
-           Mathematics, Vol. 14.
+    .. [1] Kennedy, C. A., & Carpenter, M. H. (2019). "Diagonally implicit
+           Runge-Kutta methods for stiff ODEs". Applied Numerical
+           Mathematics, 146, 221-244.
+           :doi:`10.1016/j.apnum.2019.07.008`
+    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential
+           Equations II: Stiff and Differential-Algebraic Problems". Springer
+           Series in Computational Mathematics, Vol. 14.
+           :doi:`10.1007/978-3-642-05221-7`
 
     """
 

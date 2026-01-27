@@ -15,43 +15,38 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class RKDP54(ExplicitRungeKutta):
-    """Seven-stage, 5th order explicit Runge-Kutta method by Dormand and Prince (DOPRI5).
+    """Dormand-Prince 5(4) pair (DOPRI5). Seven stages, 5th order with
+    embedded 4th order error estimate.
 
-    Features an embedded 4th order method. Widely considered one of the most efficient
-    general-purpose adaptive step size solvers for non-stiff problems requiring moderate
-    to high accuracy. The 5th order result is used for propagation. Used as the basis for
-    MATLAB's ode45. FSAL property (not available in this implementation).
+    The industry-standard adaptive explicit solver and the basis of MATLAB's
+    ``ode45``. Has the FSAL property (not exploited in this implementation,
+    so all seven stages are evaluated each step).
 
     Characteristics
     ---------------
-    * Order: 5 (Propagating solution)
-    * Embedded Order: 4
-    * Stages: 7 (6 effective due to FSAL, not here though)
-    * Explicit
-    * Adaptive timestep
-    * Industry-standard adaptive solver
+    * Order: 5 (propagating) / 4 (embedded)
+    * Stages: 7
+    * Explicit, adaptive timestep
 
-    When to Use
-    -----------
-    * **Default adaptive solver**: Excellent first choice for most non-stiff problems
-    * **Moderate-to-high accuracy**: 5th order provides good accuracy efficiently
-    * **General-purpose integration**: Reliable for a wide variety of ODE systems
-    * **Industry standard**: Well-tested and widely used in production software
-    
     Note
     ----
-    Recommended as the primary adaptive solver for non-stiff problems. For stiff
-    problems, use BDF or ESDIRK methods. For very high accuracy, consider RKV65 or RKDP87.
+    Recommended default for non-stiff block diagrams. Handles smooth
+    nonlinear dynamics, coupled oscillators, and signal-processing chains
+    efficiently. If the simulation warns about excessive step rejections or
+    very small timesteps, the system is likely stiff and an implicit solver
+    (``ESDIRK43``, ``GEAR52A``) should be used instead. For very tight
+    tolerances on smooth problems, ``RKV65`` or ``RKDP87`` can be more
+    efficient per unit accuracy.
 
     References
     ----------
-    .. [1] Dormand, J. R., & Prince, P. J. (1980). "A family of embedded Runge-Kutta
-           formulae". Journal of Computational and Applied Mathematics, 6(1), 19-26.
-    .. [2] Shampine, L. F., & Reichelt, M. W. (1997). "The MATLAB ODE Suite".
-           SIAM Journal on Scientific Computing, 18(1), 1-22.
-    .. [3] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
+    .. [1] Dormand, J. R., & Prince, P. J. (1980). "A family of embedded
+           Runge-Kutta formulae". Journal of Computational and Applied
+           Mathematics, 6(1), 19-26.
+           :doi:`10.1016/0771-050X(80)90013-3`
+    .. [2] Shampine, L. F., & Reichelt, M. W. (1997). "The MATLAB ODE
+           Suite". SIAM Journal on Scientific Computing, 18(1), 1-22.
+           :doi:`10.1137/S1064827594276424`
 
     """
 

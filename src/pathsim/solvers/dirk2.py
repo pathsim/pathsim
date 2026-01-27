@@ -15,37 +15,33 @@ from ._rungekutta import DiagonallyImplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class DIRK2(DiagonallyImplicitRungeKutta):
-    """Two-stage, 2nd order Diagonally Implicit Runge-Kutta (DIRK) method.
-
-    This specific method is SSP-optimal (largest radius of absolute monotonicity
-    for a 2-stage, 2nd order DIRK), symplectic, and A-stable. It's a robust choice
-    for moderately stiff problems where second-order accuracy is sufficient.
+    """Two-stage, 2nd order DIRK method. A-stable, SSP-optimal, symplectic.
 
     Characteristics
     ---------------
     * Order: 2
-    * Stages: 2 (Implicit)
-    * Implicit (DIRK)
-    * Fixed timestep only
-    * A-stable, SSP-optimal, Symplectic
+    * Stages: 2 (implicit)
+    * Fixed timestep
+    * A-stable, SSP-optimal, symplectic
 
-    When to Use
-    -----------
-    * **Moderately stiff problems**: Good entry-level implicit method for stiff ODEs
-    * **SSP requirements with stiffness**: Combines strong stability preservation with A-stability
-    * **Symplectic integration**: Preserves geometric structure in Hamiltonian systems
-    * **Low-order implicit needs**: When 2nd order implicit accuracy is sufficient
-
-    **Trade-off**: Lower order than ESDIRK or BDF methods but has SSP and symplectic
-    properties. For higher accuracy on stiff problems, consider ESDIRK43 or BDF methods.
+    Note
+    ----
+    The simplest multi-stage implicit Runge-Kutta method. A-stability makes
+    it safe for moderately stiff block diagrams, and the symplectic property
+    preserves Hamiltonian structure when the dynamics are conservative. Two
+    implicit stages per step is relatively cheap. For higher accuracy on
+    stiff systems, use ``DIRK3`` or the adaptive ``ESDIRK43``.
 
     References
     ----------
-    .. [1] Ferracina, L., & Spijker, M. N. (2008). "Strong stability of singly-diagonally-
-           implicit Runge-Kutta methods". Applied Numerical Mathematics, 58(11), 1675-1686.
-    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential Equations II:
-           Stiff and Differential-Algebraic Problems". Springer Series in Computational
-           Mathematics, Vol. 14.
+    .. [1] Ferracina, L., & Spijker, M. N. (2008). "Strong stability of
+           singly-diagonally-implicit Runge-Kutta methods". Applied Numerical
+           Mathematics, 58(11), 1675-1686.
+           :doi:`10.1016/j.apnum.2007.10.004`
+    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential
+           Equations II: Stiff and Differential-Algebraic Problems". Springer
+           Series in Computational Mathematics, Vol. 14.
+           :doi:`10.1007/978-3-642-05221-7`
 
     """
 

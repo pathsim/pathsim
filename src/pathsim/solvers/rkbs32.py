@@ -15,44 +15,34 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class RKBS32(ExplicitRungeKutta):
-    """Four-stage, 3rd order explicit Runge-Kutta method by Bogacki and Shampine.
+    """Bogacki-Shampine 3(2) pair. Four-stage, 3rd order with FSAL property.
 
-    Features an embedded 2nd order method for adaptive step size control with FSAL
-    (First Same As Last) property. The 3rd order result is used for propagation.
-    Commonly used in software packages (e.g., MATLAB's ode23). Good for problems
-    requiring low to moderate accuracy with efficiency.
+    The underlying method of MATLAB's ``ode23``. The First-Same-As-Last
+    (FSAL) property makes the effective cost three stages per accepted step.
 
     Characteristics
     ---------------
-    * Order: 3 (Propagating solution)
-    * Embedded Order: 2 (Error estimation)
-    * Stages: 4 (3 effective due to FSAL)
-    * Explicit
-    * Adaptive timestep
-    * Efficient low-to-moderate accuracy solver
+    * Order: 3 (propagating) / 2 (embedded)
+    * Stages: 4 (3 effective with FSAL)
+    * Explicit, adaptive timestep
 
-    When to Use
-    -----------
-    * **Low-to-moderate accuracy needs**: When stringent accuracy is not required
-    * **Efficiency-focused applications**: Cheaper than 5th order methods
-    * **Smooth non-stiff problems**: Well-suited for mildly nonlinear problems
-    * **Default low-order adaptive solver**: Good general-purpose choice for less demanding problems
-    
     Note
     ----
-    More efficient than 5th order methods but less accurate. For higher
-    accuracy requirements, use RKDP54 or RKCK54. Nonetheless a good default 
-    explicit adaptive timestep solver.
+    A good default when moderate accuracy suffices and per-step cost matters
+    more than large step sizes. Fewer stages than 5th order pairs, so faster
+    per step but needs more steps for the same global error. In a PathSim
+    block diagram with smooth, non-stiff dynamics and relaxed tolerances this
+    is often the most efficient explicit choice. Switch to ``RKDP54`` when
+    tighter tolerances are required.
 
     References
     ----------
-    .. [1] Bogacki, P., & Shampine, L. F. (1989). "A 3(2) pair of Runge-Kutta formulas".
-           Applied Mathematics Letters, 2(4), 321-325.
-    .. [2] Shampine, L. F., & Reichelt, M. W. (1997). "The MATLAB ODE Suite".
-           SIAM Journal on Scientific Computing, 18(1), 1-22.
-    .. [3] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
+    .. [1] Bogacki, P., & Shampine, L. F. (1989). "A 3(2) pair of
+           Runge-Kutta formulas". Applied Mathematics Letters, 2(4),
+           321-325. :doi:`10.1016/0893-9659(89)90079-7`
+    .. [2] Shampine, L. F., & Reichelt, M. W. (1997). "The MATLAB ODE
+           Suite". SIAM Journal on Scientific Computing, 18(1), 1-22.
+           :doi:`10.1137/S1064827594276424`
 
     """
 

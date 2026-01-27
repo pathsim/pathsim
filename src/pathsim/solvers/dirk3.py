@@ -15,42 +15,37 @@ from ._rungekutta import DiagonallyImplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class DIRK3(DiagonallyImplicitRungeKutta):
-    """Four-stage, 3rd order L-stable Diagonally Implicit Runge-Kutta (DIRK) method.
+    """Four-stage, 3rd order L-stable DIRK method. Stiffly accurate.
 
-    L-stability (A-stability and stiffly accurate, i.e., :math:`|R(\\infty)| = 0`) makes
-    this method suitable for stiff problems where damping of high-frequency components
-    is desired. The stiffly accurate property ensures good behavior for problems with
-    singular perturbations and differential-algebraic equations.
+    L-stability (:math:`|R(\\infty)| = 0`) fully damps parasitic
+    high-frequency modes. The stiffly accurate property ensures the last
+    stage equals the step output, which is beneficial for
+    differential-algebraic systems.
 
     Characteristics
     ---------------
     * Order: 3
-    * Stages: 4 (Implicit)
-    * Implicit (DIRK)
-    * Fixed timestep only
-    * L-stable (and thus A-stable)
-    * Stiffly accurate
+    * Stages: 4 (implicit)
+    * Fixed timestep
+    * L-stable, stiffly accurate
 
-    When to Use
-    -----------
-    * **Stiff problems**: Excellent stability for very stiff ODEs
-    * **Damping required**: L-stability damps high-frequency oscillations
-    * **Differential-algebraic equations**: Stiffly accurate property helps with DAEs
-    * **3rd order implicit**: Moderate accuracy with strong stability
-
-    **Recommended** for stiff problems requiring 3rd order accuracy. For higher order,
-    consider ESDIRK54. For variable timestep, use adaptive ESDIRK methods.
+    Note
+    ----
+    A robust fixed-step solver for stiff block diagrams. L-stability makes
+    it well-suited for systems with widely separated time scales, such as a
+    fast electrical subsystem driving a slow thermal or mechanical model.
+    Also used internally as the startup method for ``BDF`` solvers. For
+    adaptive stepping on stiff problems, prefer ``ESDIRK43``.
 
     References
     ----------
-    .. [1] Crouzeix, M. (1975). "Sur l'approximation des équations différentielles
-           opérationnelles linéaires par des méthodes de Runge-Kutta". PhD thesis,
-           Université Paris VI.
-    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential Equations II:
-           Stiff and Differential-Algebraic Problems". Springer Series in Computational
-           Mathematics, Vol. 14.
-    .. [3] Alexander, R. (1977). "Diagonally implicit Runge-Kutta methods for stiff O.D.E.'s".
-           SIAM Journal on Numerical Analysis, 14(6), 1006-1021.
+    .. [1] Alexander, R. (1977). "Diagonally implicit Runge-Kutta methods
+           for stiff O.D.E.'s". SIAM Journal on Numerical Analysis, 14(6),
+           1006-1021. :doi:`10.1137/0714068`
+    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential
+           Equations II: Stiff and Differential-Algebraic Problems". Springer
+           Series in Computational Mathematics, Vol. 14.
+           :doi:`10.1007/978-3-642-05221-7`
 
     """
 

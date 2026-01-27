@@ -15,37 +15,35 @@ from ._rungekutta import DiagonallyImplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class ESDIRK4(DiagonallyImplicitRungeKutta):
-    """Six-stage, 4th order Singly Diagonally Implicit Runge-Kutta (ESDIRK) method.
+    """Six-stage, 4th order ESDIRK method. A-stable with explicit first stage.
 
-    Features an explicit first stage (making it ESDIRK). This specific tableau is designed
-    for handling stiff problems and potentially Differential Algebraic Equations (DAEs) of
-    index up to two or three. Does not have an embedded method for error estimation in this
-    implementation (fixed step only).
+    No embedded error estimator; fixed timestep only.
 
     Characteristics
     ---------------
     * Order: 4
-    * Stages: 6 (1 Explicit, 5 Implicit)
-    * Implicit (ESDIRK)
-    * Fixed timestep only
+    * Stages: 6 (1 explicit, 5 implicit)
+    * Fixed timestep
     * A-stable
 
-    When to Use
-    -----------
-    * **Stiff problems with fixed timestep**: 4th order accuracy for stiff ODEs
-    * **Differential-algebraic equations**: Suitable for DAEs of index 2-3
-    * **Moderate-to-high accuracy on stiff problems**: Better than 3rd order methods
-    * **Known stable timestep**: When adaptive stepping is not needed
-
-    **Note**: For adaptive timestepping on stiff problems, use ESDIRK43 or ESDIRK54 instead.
+    Note
+    ----
+    Provides 4th order accuracy on stiff block diagrams when the timestep is
+    predetermined (e.g. real-time or hardware-in-the-loop contexts). The
+    explicit first stage reuses the last function evaluation from the
+    previous step, saving one implicit solve per step compared to a fully
+    implicit DIRK. For adaptive stepping, use ``ESDIRK43`` which adds an
+    embedded error estimator at the same stage count.
 
     References
     ----------
-    .. [1] Kennedy, C. A., & Carpenter, M. H. (2016). "Diagonally implicit Runge-Kutta
-           methods for ordinary differential equations. A review". NASA Technical Report.
-    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential Equations II:
-           Stiff and Differential-Algebraic Problems". Springer Series in Computational
-           Mathematics, Vol. 14.
+    .. [1] Kennedy, C. A., & Carpenter, M. H. (2016). "Diagonally implicit
+           Runge-Kutta methods for ordinary differential equations. A
+           review". NASA/TM-2016-219173.
+    .. [2] Hairer, E., & Wanner, G. (1996). "Solving Ordinary Differential
+           Equations II: Stiff and Differential-Algebraic Problems". Springer
+           Series in Computational Mathematics, Vol. 14.
+           :doi:`10.1007/978-3-642-05221-7`
 
     """
 

@@ -17,18 +17,25 @@ from ._solver import ImplicitSolver
 # SOLVERS ==============================================================================
 
 class SteadyState(ImplicitSolver):
-    """Pseudo-solver that finds the time-independent steady-state solution (DC operating point).
+    """Pseudo-solver for computing the DC operating point (steady state).
 
-    This works by modifying the fixed-point iteration target. Instead of solving
-    :math:`x_{n+1} = G(x_{n+1})` for an implicit step, it aims to solve the algebraic equation
-    :math:`f(x, u, t_{steady}) = 0` by finding the fixed point of :math:`x = x + f(x, u, t_{steady})`.
-    It uses the same internal optimizer (e.g., NewtonAnderson) as other implicit solvers.
+    Solves :math:`f(x, u, t) = 0` by iterating the fixed-point map
+    :math:`x \\leftarrow x + f(x, u, t)` using the internal optimizer
+    (Newton-Anderson). Not a time-stepping method.
 
     Characteristics
     ---------------
-    * Purpose: Find steady-state (:math:`dx/dt = 0`)
+    * Purpose: find :math:`\\dot{x} = 0`
     * Implicit (uses optimizer)
-    * Not a time-stepping method.
+    * No time integration
+
+    Note
+    ----
+    Used by ``Simulation.steady_state()`` to initialise block diagrams at
+    their equilibrium before a transient run. Particularly useful when
+    dynamic blocks (``Integrator``, ``ODE``, ``LTI``) have non-trivial
+    equilibria that depend on the surrounding algebraic network.
+
     """
         
     def solve(self, f, J, dt):

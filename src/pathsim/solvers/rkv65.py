@@ -15,42 +15,33 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class RKV65(ExplicitRungeKutta):
-    """Nine-stage, 6th order explicit Runge-Kutta method by Verner.
-
-    Features an embedded 5th order method for adaptive step size control. This is the
-    'most robust' 9-stage 6(5) pair from Jim Verner's collection, designed for efficient
-    high-accuracy integration of non-stiff problems. Offers better accuracy than 5th
-    order methods while being more efficient than 8th order methods.
+    """Verner 6(5) "most robust" pair. Nine stages, 6th order with
+    embedded 5th order error estimate.
 
     Characteristics
     ---------------
-    * Order: 6 (Propagating solution)
-    * Embedded Order: 5
+    * Order: 6 (propagating) / 5 (embedded)
     * Stages: 9
-    * Explicit
-    * Adaptive timestep
-    * Efficient high-order method for non-stiff problems
+    * Explicit, adaptive timestep
 
-    When to Use
-    -----------
-    * **High-accuracy requirements**: When 5th order is insufficient but 8th order is overkill
-    * **Smooth non-stiff problems**: Excellent for problems with smooth solutions
-    * **Stringent error tolerances**: When tight tolerances are needed efficiently
-    * **Scientific computing**: Common in astronomical and molecular dynamics simulations
-    
     Note
     ----
-    More expensive per step than 5th order methods, but can take larger steps for the same 
-    accuracy. For very high accuracy, consider RKF78 or RKDP87.
+    Fills the gap between 5th order pairs (``RKDP54``) and the expensive 8th
+    order ``RKDP87``. The extra stages pay off when the dynamics are smooth
+    and tolerances are tight (roughly :math:`10^{-8}` or below), because the
+    higher order allows much larger steps. For tolerances in the
+    :math:`10^{-4}`--:math:`10^{-6}` range, ``RKDP54`` is usually cheaper
+    overall due to fewer stages.
 
     References
     ----------
-    .. [1] Verner, J. H. (2010). "Numerically optimal Runge-Kutta pairs with interpolants".
-           Numerical Algorithms, 53(2-3), 383-396.
-    .. [2] Verner's Refuge for Runge-Kutta Pairs: https://www.sfu.ca/~jverner/
-    .. [3] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
+    .. [1] Verner, J. H. (2010). "Numerically optimal Runge-Kutta pairs
+           with interpolants". Numerical Algorithms, 53(2-3), 383-396.
+           :doi:`10.1007/s11075-009-9290-3`
+    .. [2] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving
+           Ordinary Differential Equations I: Nonstiff Problems". Springer
+           Series in Computational Mathematics, Vol. 8.
+           :doi:`10.1007/978-3-540-78862-1`
 
     """
 

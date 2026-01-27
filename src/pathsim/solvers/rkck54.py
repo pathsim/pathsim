@@ -15,46 +15,35 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class RKCK54(ExplicitRungeKutta):
-    """Six-stage, 5th order explicit Runge-Kutta method by Cash and Karp.
+    """Cash-Karp 5(4) pair. Six stages, 5th order with embedded 4th order
+    error estimate.
 
-    Features an embedded 4th order method. The difference between the 5th and 4th order
-    results provides a 5th order error estimate, typically used to control the step size
-    while propagating the 5th order solution (local extrapolation). Known for better
-    stability properties compared to RKF45.
+    Designed to improve on the stability properties of the Fehlberg pair
+    (``RKF45``) while keeping the same stage count.
 
     Characteristics
     ---------------
-    * Order: 5 (Propagating solution)
-    * Embedded Order: 4
+    * Order: 5 (propagating) / 4 (embedded)
     * Stages: 6
-    * Explicit
-    * Adaptive timestep
-    * Good stability, suitable for moderate-to-high accuracy requirements
-
-    When to Use
-    -----------
-    * **Improved stability over RKF45**: When RKF45 exhibits stability issues
-    * **Moderate-to-high accuracy needs**: 5th order for better accuracy than 3rd order methods
-    * **Non-stiff problems**: Excellent for smooth, non-stiff ODEs
-    * **Alternative to RKDP54**: Similar performance, sometimes better for specific problems
+    * Explicit, adaptive timestep
 
     Note
     ----
-    RKDP54 is generally more efficient when first-same-as-last (FSAL) property is implemented 
-    (which it currently is not!), but RKCK54 can have better stability for certain problems. 
-    Both are excellent 5th order adaptive methods.
+    Comparable to ``RKDP54`` in cost and accuracy for most non-stiff block
+    diagrams. Can exhibit slightly better stability on problems with
+    eigenvalues near the imaginary axis. Both pairs are solid 5th order
+    choices; ``RKDP54`` is the more commonly used default.
 
     References
     ----------
-    .. [1] Cash, J. R., & Karp, A. H. (1990). "A variable order Runge-Kutta method for
-           initial value problems with rapidly varying right-hand sides". ACM Transactions
-           on Mathematical Software, 16(3), 201-222.
-    .. [2] Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P. (2007).
-           "Numerical Recipes: The Art of Scientific Computing" (3rd ed.). Cambridge
-           University Press.
-    .. [3] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
+    .. [1] Cash, J. R., & Karp, A. H. (1990). "A variable order Runge-Kutta
+           method for initial value problems with rapidly varying right-hand
+           sides". ACM Transactions on Mathematical Software, 16(3), 201-222.
+           :doi:`10.1145/79505.79507`
+    .. [2] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving
+           Ordinary Differential Equations I: Nonstiff Problems". Springer
+           Series in Computational Mathematics, Vol. 8.
+           :doi:`10.1007/978-3-540-78862-1`
 
     """
 

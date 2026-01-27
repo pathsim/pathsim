@@ -15,44 +15,39 @@ from ._rungekutta import ExplicitRungeKutta
 # SOLVERS ==============================================================================
 
 class RKDP87(ExplicitRungeKutta):
-    """Thirteen-stage, 8th order explicit Runge-Kutta method by Dormand and Prince (DOP853).
+    """Dormand-Prince 8(7) pair (DOP853). Thirteen stages, 8th order with
+    embedded 7th order error estimate.
 
-    Features an embedded 7th order method for adaptive step size control. Designed for
-    problems requiring very high accuracy with excellent error estimation. This is one
-    of the most efficient 8th order methods available. FSAL property (not available in
-    this implementation).
+    The highest-order general-purpose explicit pair in this library. Has the
+    FSAL property (not exploited in this implementation).
 
     Characteristics
     ---------------
-    * Order: 8 (Propagating solution)
-    * Embedded Order: 7
-    * Stages: 13 (12 effective due to FSAL)
-    * Explicit
-    * Adaptive timestep
-    * State-of-the-art very high-order solver
+    * Order: 8 (propagating) / 7 (embedded)
+    * Stages: 13
+    * Explicit, adaptive timestep
 
-    When to Use
-    -----------
-    * **Extremely high accuracy**: When very tight error tolerances are required
-    * **Smooth high-dimensional problems**: Excellent for smooth ODEs in many dimensions
-    * **Long-time precision integration**: Orbital mechanics, celestial mechanics
-    * **Benchmark computations**: Reference solutions for method comparison
-    
     Note
     ----
-    Generally recommended as the highest-order general-purpose explicit method. More 
-    efficient than RKF78 for the same accuracy level. Only use when very high accuracy 
-    justifies the 13-stage computational cost.
+    Only worthwhile when the dynamics are very smooth and tolerances are
+    extremely tight (roughly :math:`10^{-10}` or below). The 13 function
+    evaluations per step are expensive, but the 8th order convergence means
+    the step size can be much larger than with lower-order methods at the
+    same error. Suitable for generating reference solutions to validate other
+    solvers in a block diagram. For typical engineering tolerances
+    (:math:`10^{-4}`--:math:`10^{-8}`), ``RKDP54`` or ``RKV65`` are more
+    efficient.
 
     References
     ----------
-    .. [1] Dormand, J. R., & Prince, P. J. (1981). "High order embedded Runge-Kutta
-           formulae". Journal of Computational and Applied Mathematics, 7(1), 67-75.
-    .. [2] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving Ordinary
-           Differential Equations I: Nonstiff Problems". Springer Series in Computational
-           Mathematics, Vol. 8.
-    .. [3] Prince, P. J., & Dormand, J. R. (1981). "High order embedded Runge-Kutta
-           formulae". Journal of Computational and Applied Mathematics, 7(1), 67-75.
+    .. [1] Prince, P. J., & Dormand, J. R. (1981). "High order embedded
+           Runge-Kutta formulae". Journal of Computational and Applied
+           Mathematics, 7(1), 67-75.
+           :doi:`10.1016/0771-050X(81)90010-3`
+    .. [2] Hairer, E., Nørsett, S. P., & Wanner, G. (1993). "Solving
+           Ordinary Differential Equations I: Nonstiff Problems". Springer
+           Series in Computational Mathematics, Vol. 8.
+           :doi:`10.1007/978-3-540-78862-1`
 
     """
 
