@@ -34,6 +34,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
+import copy
+
 import numpy as np
 import scipy.optimize as sci_opt
 
@@ -184,6 +186,53 @@ def FreeParameter(name, **kwargs):
 
 
 
+class SharedBlockParameter(Parameter):
+
+    """A block-bound parameter applied to the same attribute on multiple targets.
+
+    This is intended for multi-experiment fitting where each experiment uses a
+    deep-copied Simulation, but the fitted parameter should be shared globally.
+
+    Notes
+    -----
+    - `targets` is a list of block objects (one per experiment) that all receive
+      the same transformed value.
+    - `block` is left as the first target to preserve existing repr/debug.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        targets: List[Any],
+        attribute: str,
+        value: float = 1.0,
+        bounds: Tuple[float, float] = (-np.inf, np.inf),
+        transform: Optional[Callable[[float], float]] = None,
+    ):
+        if not targets:
+            raise ValueError("targets must be a non-empty list")
+        self.targets = targets
+        super().__init__(
+            name=name,
+            value=value,
+            bounds=bounds,
+            transform=transform,
+            block=targets[0],
+            attribute=attribute,
+        )
+
+    def set(self, value: float) -> None:
+        self._value = float(value)
+        transformed = self()
+
+        for tgt in self.targets:
+            obj = tgt
+            attrs = self.attribute.split('.')
+            for attr in attrs[:-1]:
+                obj = getattr(obj, attr)
+            setattr(obj, attrs[-1], transformed)
+
+
 @dataclass
 class ScopeSignal:
     
@@ -197,10 +246,21 @@ class ScopeSignal:
         Scope-like provider with `.read()`.
     port : int
         Port index to extract from multi-port scopes.
+
+    Notes
+    -----
+    For multi-experiment fitting with deep-copied simulations, storing a direct
+    `scope` reference can accidentally bind to experiment 0's scope. To support
+    resolving the matching scope inside each experiment, a ScopeSignal can also
+    carry (block_type, occurrence) identifiers.
     """
 
-    scope: object
+    scope: object | None = None
     port: int = 0
+
+    # Optional selector to resolve the correct scope instance per experiment
+    block_type: str | None = None
+    occurrence: int | None = None
 
 
     def _extract(self, t, y):
@@ -222,6 +282,8 @@ class ScopeSignal:
 
     def read(self) -> Tuple[np.ndarray, np.ndarray]:
         """Read `(t, y)` from the scope and extract the selected port."""
+        if self.scope is None:
+            raise ValueError("ScopeSignal.scope is None; it must be resolved before reading")
         t, y = self.scope.read()
         return self._extract(t, y)
 
@@ -309,6 +371,37 @@ class SimRunner:
 
 
 @dataclass
+class Experiment:
+
+    """A single experiment (one sim/run) with one or more datasets.
+
+    Each experiment is evaluated by running its runner once per objective call,
+    then comparing one or more measurements to one or more mapped scope signals.
+
+    Parameters
+    ----------
+    runner : SimRunner
+        Runner responsible for resetting and running the simulation.
+    duration : float, optional
+        Optional explicit duration override for this experiment.
+    """
+
+    runner: Any
+    duration: float | None = None
+    measurements: List[TimeSeriesData] | None = None
+    outputs: List[ScopeSignal] | None = None
+    sigma: List[float | None] | None = None
+
+    def __post_init__(self) -> None:
+        if self.measurements is None:
+            self.measurements = []
+        if self.outputs is None:
+            self.outputs = []
+        if self.sigma is None:
+            self.sigma = []
+
+
+@dataclass
 class EstimatorResult:
     
     """Optimization result container."""
@@ -357,62 +450,454 @@ class ParameterEstimator:
     ):
         if parameters is None:
             parameters = []
-        self.parameters = parameters
-        
-        # Handle single or multiple measurements/outputs
-        if measurement is None:
-            measurement = []
-        
-        if isinstance(measurement, TimeSeriesData):
-            self.measurements = [measurement]
-            self.outputs = [outputs] if outputs is not None else [None]
-        else:
-            self.measurements = measurement
-            self.outputs = outputs if outputs is not None else [None] * len(measurement)
-        
-        # Create runner for simulation
-        if hasattr(simulator, 'run'):
-            self.runners = [SimRunner(
-                sim=simulator,
-                output=None,  # outputs are read from ScopeSignal
+
+        # Global/shared parameters (applied to all experiments)
+        self.global_parameters: List[Parameter] = []
+        # Local parameters per experiment (applied only to that experiment)
+        self.local_parameters: List[List[Parameter]] = []
+
+        # Backwards compatibility: treat provided parameters list as global
+        self.global_parameters.extend(parameters)
+
+        # Prefer experiments as the primary internal structure (supports multi-run fitting)
+        self.experiments: List[Experiment] = []
+
+        # Keep a reference simulator for cloning experiments (deepcopy)
+        self._base_simulator = simulator if simulator is not None and hasattr(simulator, 'run') else None
+
+        # Remember defaults for auto-created experiments
+        self._default_runner_kwargs = dict(
+            adaptive=adaptive,
+            pre_run=pre_run,
+        )
+
+        # Backwards compatible: create experiment 0 from simulator if provided
+        if simulator is not None:
+            self.add_experiment(
+                simulator,
                 duration=duration,
                 adaptive=adaptive,
                 pre_run=pre_run,
-            )]
+            )
+
+        # Backwards compatible: accept measurement/outputs/sigma in __init__ and attach to experiment 0
+        if measurement is None:
+            measurement = []
+
+        if isinstance(measurement, TimeSeriesData):
+            measurement_list = [measurement]
+            outputs_list = [outputs] if outputs is not None else [None]
         else:
-            self.runners = [simulator]
-            
-        self._update_duration_from_measurements()
-        
+            measurement_list = list(measurement)
+            outputs_list = list(outputs) if outputs is not None else [None] * len(measurement_list)
+
         if sigma is None:
-            sigma = []
-        self.sigma = sigma
-        
+            sigma_list: List[float | None] = [None] * len(measurement_list)
+        elif isinstance(sigma, (list, np.ndarray)):
+            sigma_list = [float(s) if s is not None else None for s in sigma]
+        else:
+            sigma_list = [float(sigma)] * len(measurement_list)
+
+        if measurement_list:
+            if not self.experiments:
+                raise ValueError("measurement provided but no simulator/runner configured")
+
+            for ts, out, sig in zip(measurement_list, outputs_list, sigma_list):
+                if out is None:
+                    raise ValueError(
+                        "outputs must be provided when passing measurement(s) into ParameterEstimator.__init__"
+                    )
+
+                if isinstance(out, ScopeSignal):
+                    scope = out.scope
+                    port = int(out.port)
+                else:
+                    scope, port = self._scope_port_from_signal(out)
+
+                self.add_timeseries(ts, scope=scope, port=port, sigma=sig, experiment=0)
+
+        # Legacy aliases for downstream compatibility
+        self.runners = [exp.runner for exp in self.experiments] if self.experiments else []
+
+        # Derive durations after initial dataset registration
+        self.duration = 0.0
+        self._update_duration_from_measurements()
+
+
+    @property
+    def parameters(self) -> List[Parameter]:
+        """Flattened parameter list in optimizer order: globals then locals by experiment."""
+        params: List[Parameter] = []
+        params.extend(self.global_parameters)
+        for exp_params in self.local_parameters:
+            params.extend(exp_params)
+        return params
+
+
+    def _rebuild_local_parameter_container(self) -> None:
+        """Ensure local parameter list has one entry per experiment."""
+        while len(self.local_parameters) < len(self.experiments):
+            self.local_parameters.append([])
+
+
+    def _update_duration_from_measurements(self) -> None:
+        """Update experiment runner durations from their measurements (unless explicitly overridden)."""
+        # Per-experiment durations
+        for exp in self.experiments:
+            if not exp.measurements:
+                continue
+
+            derived = float(max(meas.time.max() for meas in exp.measurements))
+            dur = float(exp.duration) if exp.duration is not None else derived
+
+            if hasattr(exp.runner, "duration"):
+                exp.runner.duration = dur
+
+        # Convenience overall duration
+        all_meas = [m for exp in self.experiments for m in (exp.measurements or [])]
+        self.duration = float(max((m.time.max() for m in all_meas), default=0.0))
+
+
+    def add_experiment(
+        self,
+        simulator,
+        *,
+        duration: float | None = None,
+        adaptive: bool = False,
+        pre_run: Callable[[], None] | None = None,
+        reset_time: float = 0.0,
+        suppress_reset_log: bool = True,
+        copy_sim: bool = False,
+    ) -> int:
+        """Register a new experiment and return its index.
+
+        Parameters
+        ----------
+        simulator : object
+            PathSim simulation (has .run/.reset) or runner-like object.
+        copy_sim : bool
+            If True and `simulator` is a PathSim Simulation, deep-copies it so each
+            experiment has independent state.
+        """
+        if hasattr(simulator, 'run'):
+            sim_obj = copy.deepcopy(simulator) if copy_sim else simulator
+            runner = SimRunner(
+                sim=sim_obj,
+                output=None,
+                duration=float(duration) if duration is not None else 0.0,
+                adaptive=adaptive,
+                pre_run=pre_run,
+                reset_time=reset_time,
+                suppress_reset_log=suppress_reset_log,
+            )
+        else:
+            runner = simulator
+
+        self.experiments.append(Experiment(runner=runner, duration=float(duration) if duration is not None else None))
+        self.runners = [exp.runner for exp in self.experiments]
+
+        # keep locals aligned
+        self._rebuild_local_parameter_container()
+
+        self._update_duration_from_measurements()
+        return len(self.experiments) - 1
+
+
+    def _ensure_experiment(self, idx: int) -> None:
+        """Ensure that experiment indices up to `idx` exist.
+
+        If a base simulator was provided at construction time, missing experiments
+        are deep-copied from it.
+        """
+        if idx < 0:
+            raise IndexError("experiment index must be >= 0")
+
+        while len(self.experiments) <= idx:
+            if self._base_simulator is None:
+                raise IndexError(
+                    f"experiment index {idx} out of range and no base simulator is available for cloning. "
+                    "Call add_experiment(...) explicitly."
+                )
+            self.add_experiment(
+                self._base_simulator,
+                copy_sim=True,
+                **self._default_runner_kwargs,
+            )
+
+        self._rebuild_local_parameter_container()
+
+
+    @staticmethod
+    def _block_occurrence(sim, block_obj: object) -> tuple[str, int]:
+        """Return (type_name, occurrence_index) for a block object within sim.blocks."""
+        tname = type(block_obj).__name__
+        occ = 0
+        for b in sim.blocks:
+            if type(b).__name__ == tname:
+                if b is block_obj:
+                    return tname, occ
+                occ += 1
+        raise ValueError("block not found in sim.blocks")
+
+
+    @staticmethod
+    def _find_block_by_occurrence(sim, type_name: str, occurrence: int) -> object:
+        """Find the Nth block of a given class name in sim.blocks."""
+        occ = 0
+        for b in sim.blocks:
+            if type(b).__name__ == type_name:
+                if occ == occurrence:
+                    return b
+                occ += 1
+        raise ValueError(f"No block '{type_name}' occurrence {occurrence} found in simulation")
+
+
+    def _resolve_output(self, exp: Experiment, sig: ScopeSignal) -> ScopeSignal:
+        """Resolve a ScopeSignal to the matching scope object inside an experiment sim."""
+        if sig.scope is not None:
+            return sig
+
+        sim = getattr(exp.runner, 'sim', None)
+        if sim is None:
+            raise ValueError("Cannot resolve ScopeSignal without a SimRunner-backed experiment")
+
+        if sig.block_type is None or sig.occurrence is None:
+            raise ValueError("Unresolvable ScopeSignal (missing selector and scope reference)")
+
+        scope_obj = self._find_block_by_occurrence(sim, sig.block_type, sig.occurrence)
+        return ScopeSignal(scope=scope_obj, port=int(sig.port), block_type=sig.block_type, occurrence=sig.occurrence)
+
+
+    def add_timeseries(
+        self,
+        ts: "TimeSeriesData",
+        *,
+        scope: object | None = None,
+        port: int | None = None,
+        signal: object | None = None,
+        sigma: float | None = None,
+        experiment: int = 0,
+    ) -> "ParameterEstimator":
+        """Add a measurement and map it to a scope port for a given experiment."""
+        if not isinstance(ts, TimeSeriesData):
+            raise TypeError(f"add_timeseries expects TimeSeriesData, got {type(ts).__name__}")
+
+        self._ensure_experiment(experiment)
+
+        if signal is not None:
+            if scope is not None or port is not None:
+                raise ValueError("Pass either `signal=` OR (`scope=`, `port=`), not both.")
+            scope, port = self._scope_port_from_signal(signal)
+
+        if scope is None or port is None:
+            raise ValueError("You must pass either scope=..., port=... or signal=scope[0].")
+
+        # If scope belongs to experiment 0 sim, store an occurrence selector so
+        # the correct (deep-copied) scope for each experiment can be resolved.
+        block_type = None
+        occurrence = None
+        sim0 = getattr(self.experiments[0].runner, 'sim', None) if self.experiments else None
+        if sim0 is not None:
+            try:
+                block_type, occurrence = self._block_occurrence(sim0, scope)
+            except Exception:
+                block_type, occurrence = None, None
+
+        exp = self.experiments[experiment]
+        exp.measurements.append(ts)
+        exp.outputs.append(
+            ScopeSignal(
+                scope=None if block_type is not None else scope,
+                port=int(port),
+                block_type=block_type,
+                occurrence=occurrence,
+            )
+        )
+        exp.sigma.append(float(sigma) if sigma is not None else None)
+
+        self._update_duration_from_measurements()
+        return self
+
+
+    def add_block_parameter(
+        self,
+        block,
+        param_name,
+        value=None,
+        bounds=(-np.inf, np.inf),
+        id=None,
+        transform: Optional[Callable[[float], float]] = None,
+        **_kwargs,
+    ) -> "ParameterEstimator":
+        """Add a block-bound parameter as a global parameter.
+
+        This final definition intentionally lives at the end of the class so it
+        overrides any earlier duplicate definitions.
+        """
+        param = block_param_to_var(
+            block,
+            param_name,
+            value=value,
+            bounds=bounds,
+            id=id,
+            transform=transform,
+        )
+        self.global_parameters.append(param)
+        return self
+
+
+    def add_shared_block_parameter(
+        self,
+        block_name: str,
+        param_name: str,
+        *,
+        value: float | None = None,
+        bounds: Tuple[float, float] = (-np.inf, np.inf),
+        id: str | None = None,
+        transform: Optional[Callable[[float], float]] = None,
+    ) -> "ParameterEstimator":
+        """Add a single global parameter applied to the same block attribute in every experiment.
+
+        Parameters
+        ----------
+        block_name : str
+            Name of the block class to match (e.g. "Constant", "Integrator").
+            The first instance of that class found in each experiment sim is used.
+        param_name : str
+            Attribute name on the block.
+
+        Notes
+        -----
+        This is a convenience helper for deep-copied sims where the same parameter
+        should be shared across all experiments.
+        """
+        if not self.experiments:
+            raise ValueError("No experiments configured. Pass simulator=... or call add_experiment().")
+
+        targets: List[Any] = []
+        for exp in self.experiments:
+            sim = getattr(exp.runner, 'sim', None)
+            if sim is None:
+                raise ValueError("Shared block parameters require SimRunner experiments.")
+
+            match = None
+            for b in sim.blocks:
+                if type(b).__name__ == block_name:
+                    match = b
+                    break
+            if match is None:
+                raise ValueError(f"Experiment sim has no block of type '{block_name}'.")
+            if not hasattr(match, param_name):
+                raise AttributeError(f"Block '{block_name}' has no attribute '{param_name}'")
+            targets.append(match)
+
+        pname = f"{block_name}.{param_name}" if id is None else f"{id}.{param_name}"
+        if value is None:
+            value = float(getattr(targets[0], param_name))
+
+        self.global_parameters.append(
+            SharedBlockParameter(
+                name=pname,
+                targets=targets,
+                attribute=param_name,
+                value=float(value),
+                bounds=bounds,
+                transform=transform,
+            )
+        )
+        return self
+
 
     def add_parameters(self, params) -> "ParameterEstimator":
-        self.parameters.extend(params)
+        """Backwards compatible: adds parameters as global."""
+        self.global_parameters.extend(params)
         return self
 
 
-    def add_block_parameter(self, block, param_name, value=None, bounds=(-np.inf, np.inf), id=None) -> "ParameterEstimator":
-        param = block_param_to_var(block, param_name, value=value, bounds=bounds, id=id)
-        self.parameters.append(param)
+    # The following legacy duplicate without `transform` has been removed to prevent
+    # overriding the transform-aware add_block_parameter above.
+    # (Intentionally left as a comment for context.)
+    #
+    # def add_block_parameter(self, block, param_name, value=None, bounds=(-np.inf, np.inf), id=None) -> "ParameterEstimator":
+    #     """Backwards compatible: adds block parameter as global (applies only to bound block instance).
+    #
+    #     For multi-experiment usage, prefer `add_global_block_parameter(...)` or
+    #     `add_local_block_parameter(...)`.
+    #     """
+    #     param = block_param_to_var(block, param_name, value=value, bounds=bounds, id=id)
+    #     self.global_parameters.append(param)
+    #     return self
+
+
+    def add_global_block_parameter(
+        self,
+        block_name: str,
+        param_name: str,
+        *,
+        value: float | None = None,
+        bounds: Tuple[float, float] = (-np.inf, np.inf),
+        id: str | None = None,
+        transform: Optional[Callable[[float], float]] = None,
+    ) -> "ParameterEstimator":
+        """Alias for shared/global block parameter across all experiments."""
+        return self.add_shared_block_parameter(
+            block_name,
+            param_name,
+            value=value,
+            bounds=bounds,
+            id=id,
+            transform=transform,
+        )
+
+
+    def add_local_block_parameter(
+        self,
+        experiment: int,
+        block_name: str,
+        param_name: str,
+        *,
+        value: float | None = None,
+        bounds: Tuple[float, float] = (-np.inf, np.inf),
+        id: str | None = None,
+    ) -> "ParameterEstimator":
+        """Add an experiment-local block parameter (distinct value per experiment)."""
+        self._ensure_experiment(experiment)
+
+        exp = self.experiments[experiment]
+        sim = getattr(exp.runner, 'sim', None)
+        if sim is None:
+            raise ValueError("Local block parameters require SimRunner experiments.")
+
+        match = None
+        for b in sim.blocks:
+            if type(b).__name__ == block_name:
+                match = b
+                break
+        if match is None:
+            raise ValueError(f"Experiment {experiment} sim has no block of type '{block_name}'.")
+        if not hasattr(match, param_name):
+            raise AttributeError(f"Block '{block_name}' has no attribute '{param_name}'")
+
+        if id is None:
+            pname = f"exp{experiment}.{block_name}.{param_name}"
+        else:
+            pname = f"{id}.exp{experiment}.{param_name}"
+
+        if value is None:
+            value = float(getattr(match, param_name))
+
+        self.local_parameters[experiment].append(
+            BlockParameter(
+                block=match,
+                attribute=param_name,
+                name=pname,
+                value=float(value),
+                bounds=bounds,
+            )
+        )
         return self
 
-    
-    def add_measurement(self, t, y, *, name: str = "measurement", sigma: Optional[float] = None) -> "ParameterEstimator":
-        self.measurements.append(TimeSeriesData(time=t, data=y, name=name))
-        self.sigma.append(float(sigma) if sigma is not None else None)
-        self._update_duration_from_measurements()
-        return self
-    
-    
-    def add_output(self, scope, port: int = 0) -> "ParameterEstimator":
-        self.outputs.append(ScopeSignal(scope=scope, port=int(port)))
-        self._normalize_outputs()
-        return self
-        
-        
+
     @staticmethod
     def _scope_port_from_signal(signal: object) -> tuple[object, int]:
         """Extract `(scope, port)` mapping.
@@ -421,11 +906,9 @@ class ParameterEstimator:
         - explicit `(scope, port)` tuples
         - PathSim PortReference-like objects with `.block` and `.ports`
         """
-        # Explicit (scope, port)
         if isinstance(signal, (tuple, list)) and len(signal) == 2:
             return signal[0], int(signal[1])
 
-        # PathSim PortReference: has `.block` and `.ports` (ports is list-like of ints)
         blk = getattr(signal, "block", None)
         ports = getattr(signal, "ports", None)
         if blk is not None and ports is not None:
@@ -447,29 +930,13 @@ class ParameterEstimator:
         port: int | None = None,
         signal: object | None = None,
         sigma: float | None = None,
+        experiment: int = 0,
     ) -> "ParameterEstimator":
-        """Add a measurement and map it to a scope port.
-
-        Parameters
-        ----------
-        ts : TimeSeriesData
-            Measurement series.
-        scope : object, optional
-            Scope-like object with `.read() -> (t, y)`.
-        port : int, optional
-            Scope port index.
-        signal : object, optional
-            Either `scope[port]` (PortReference) or `(scope, port)`.
-        sigma : float, optional
-            Residual scaling for this series.
-
-        Returns
-        -------
-        ParameterEstimator
-            Self (for chaining).
-        """
+        """Add a measurement and map it to a scope port for a given experiment."""
         if not isinstance(ts, TimeSeriesData):
             raise TypeError(f"add_timeseries expects TimeSeriesData, got {type(ts).__name__}")
+
+        self._ensure_experiment(experiment)
 
         if signal is not None:
             if scope is not None or port is not None:
@@ -479,118 +946,123 @@ class ParameterEstimator:
         if scope is None or port is None:
             raise ValueError("You must pass either scope=..., port=... or signal=scope[0].")
 
-        if not (hasattr(scope, "read") and callable(getattr(scope, "read"))):
-            raise TypeError(f"`scope` must provide .read() -> (t, y); got {type(scope).__name__}")
+        # If scope belongs to experiment 0 sim, store an occurrence selector so
+        # the correct (deep-copied) scope for each experiment can be resolved.
+        block_type = None
+        occurrence = None
+        sim0 = getattr(self.experiments[0].runner, 'sim', None) if self.experiments else None
+        if sim0 is not None:
+            try:
+                block_type, occurrence = self._block_occurrence(sim0, scope)
+            except Exception:
+                block_type, occurrence = None, None
 
-        self.measurements.append(ts)
-        self.sigma.append(float(sigma) if sigma is not None else None)
+        exp = self.experiments[experiment]
+        exp.measurements.append(ts)
+        exp.outputs.append(
+            ScopeSignal(
+                scope=None if block_type is not None else scope,
+                port=int(port),
+                block_type=block_type,
+                occurrence=occurrence,
+            )
+        )
+        exp.sigma.append(float(sigma) if sigma is not None else None)
+
         self._update_duration_from_measurements()
-
-        if self.outputs is None:
-            self.outputs = []
-        self.outputs.append(ScopeSignal(scope=scope, port=int(port)))
-        self._normalize_outputs()
         return self
-    
-        
-    def _normalize_outputs(self) -> None:
-        self._outputs = []
-        for out in self.outputs:
-            if out is None:
-                self._outputs.append(None)
-            elif isinstance(out, ScopeSignal):
-                self._outputs.append(out)
-            elif isinstance(out, tuple) and len(out) == 2:
-                scope, port = out
-                self._outputs.append(ScopeSignal(scope=scope, port=int(port)))
-            else:
-                self._outputs.append(ScopeSignal(scope=out, port=0))
-                
-                
-    def _update_duration_from_measurements(self) -> None:
-        if self.measurements:
-            self.duration = max(meas.time.max() for meas in self.measurements)
-            if self.runners and hasattr(self.runners[0], "duration"):
-                self.runners[0].duration = self.duration
 
 
-    def apply(self, x: np.ndarray) -> None:
-        """Apply optimizer parameter vector to the model."""
-        # self._last_x = np.asarray(x, dtype=float).copy()
-        
-        for param, val in zip(self.parameters, x):
-            val_float = float(val)
+    def simulate(self, x: np.ndarray, output_idx: int = 0, *, experiment: int = 0):
+        """Simulate a selected experiment and return one of its mapped outputs.
 
-            # 1. Update the parameter object using its public API
-            # if hasattr(param, 'set'):
-            param.set(val_float)
-           
-            if hasattr(param, '_value'):
-                object.__setattr__(param, '_value', val_float)
+        Backwards compatible with legacy signature: simulate(x, output_idx=0)
+        """
+        if not self.experiments:
+            raise ValueError("No experiments configured.")
+        if experiment < 0 or experiment >= len(self.experiments):
+            raise IndexError(f"experiment index {experiment} out of range (0..{len(self.experiments)-1})")
 
-        # Update source-only blocks (no inputs) after parameter changes.
-        if hasattr(self, 'runners') and self.runners:
-            sim = self.runners[0].sim
-            for block in sim.blocks:
-                if hasattr(block, 'num_inputs') and block.num_inputs == 0:
-                    block.update(0.0)
-
-    
-    def simulate(self, x: np.ndarray, output_idx: int = 0):
         self._update_duration_from_measurements()
         self.apply(x)
 
-        if hasattr(self.runners[0], "run") and callable(getattr(self.runners[0], "run")):
-            self.runners[0].run()
-            out = self._outputs[output_idx]
-            if out is None:
-                raise ValueError("Output cannot be None for simulation.")
+        exp = self.experiments[experiment]
+        if hasattr(exp.runner, "run") and callable(getattr(exp.runner, "run")):
+            exp.runner.run()
+
+            if output_idx < 0 or output_idx >= len(exp.outputs):
+                raise IndexError(f"output_idx {output_idx} out of range for experiment {experiment}")
+
+            out = self._resolve_output(exp, exp.outputs[output_idx])
             return out.read()
 
-        self.runners[0].reset(time=0.0)
+        exp.runner.reset(time=0.0)
+        return exp.runner(None)
 
-        return self.runners[0](None)
-    
-    
+
     def residuals(self, x: np.ndarray) -> np.ndarray:
-        """Compute stacked residual vector across all mapped outputs."""
+        """Compute stacked residual vector across all experiments and datasets."""
+        if not self.experiments:
+            raise ValueError("No experiments configured.")
+
         self._update_duration_from_measurements()
         self.apply(x)
 
-        if not hasattr(self.runners[0], "run"):
-            t_sim, y_sim = self.runners[0](None)
-            t_sim = np.asarray(t_sim, dtype=float).reshape(-1)
-            y_sim = np.asarray(y_sim, dtype=float).reshape(-1)
-            y_pred = np.interp(self.measurements[0].time, t_sim, y_sim)
-            sigma = self.sigma if not isinstance(self.sigma, (list, np.ndarray)) else self.sigma[0]
-            return (y_pred - self.measurements[0].data) / sigma
+        all_residuals: List[np.ndarray] = []
 
-        # Run sim once
-        self.runners[0].run()
+        for exp_idx, exp in enumerate(self.experiments):
+            if not exp.measurements:
+                continue
 
-        all_residuals = []
-        for idx, meas in enumerate(self.measurements):
-            out = self._outputs[idx]
-            if out is None:
-                raise ValueError("Output cannot be None for multi-output estimation.")
+            # Run sim once per experiment
+            if hasattr(exp.runner, "run") and callable(getattr(exp.runner, "run")):
+                exp.runner.run()
+            else:
+                # Callable runner path: only supports a single dataset for that experiment.
+                if len(exp.measurements) != 1:
+                    raise ValueError(
+                        f"Experiment {exp_idx} uses a callable runner; only 1 dataset is supported for that experiment."
+                    )
 
-            t_out, y_out = out.read()
-            t_out = np.asarray(t_out, dtype=float).reshape(-1)
-            y_out = np.asarray(y_out, dtype=float).reshape(-1)
+                t_sim, y_sim = exp.runner(None)
+                t_sim = np.asarray(t_sim, dtype=float).reshape(-1)
+                y_sim = np.asarray(y_sim, dtype=float).reshape(-1)
 
-            y_pred = np.interp(meas.time, t_out, y_out)
-            sigma_i = self.sigma[idx] if isinstance(self.sigma, (list, np.ndarray)) else self.sigma
-            all_residuals.append((y_pred - meas.data) / sigma_i)
+                meas = exp.measurements[0]
+                y_pred = np.interp(meas.time, t_sim, y_sim)
+                sigma_i = exp.sigma[0] if exp.sigma[0] is not None else 1.0
+                all_residuals.append((y_pred - meas.data) / sigma_i)
+                continue
+
+            # Evaluate all datasets mapped to this experiment
+            if len(exp.outputs) != len(exp.measurements):
+                raise ValueError(
+                    f"Experiment {exp_idx} has {len(exp.measurements)} measurement(s) but {len(exp.outputs)} output mapping(s)."
+                )
+
+            for i, meas in enumerate(exp.measurements):
+                out = self._resolve_output(exp, exp.outputs[i])
+
+                t_out, y_out = out.read()
+                t_out = np.asarray(t_out, dtype=float).reshape(-1)
+                y_out = np.asarray(y_out, dtype=float).reshape(-1)
+
+                y_pred = np.interp(meas.time, t_out, y_out)
+                sigma_i = exp.sigma[i] if exp.sigma[i] is not None else 1.0
+                all_residuals.append((y_pred - meas.data) / sigma_i)
+
+        if not all_residuals:
+            return np.array([], dtype=float)
 
         return np.concatenate(all_residuals)
-    
-    
+
+
     def display(self):  
         
         for param in self.parameters:
             print(f"{param.name}: {param()}")
-    
-    
+
+
     def fit(
         self,
         *,
@@ -735,8 +1207,48 @@ class ParameterEstimator:
                 success=bool(res.success),
                 message=str(res.message),
             )
-            
-            
+    
+    def apply(self, x: np.ndarray) -> None:
+        """Apply optimizer parameter vector to the model(s).
+
+        Optimizer vector order:
+        - global parameters (shared across experiments)
+        - local parameters for exp0
+        - local parameters for exp1
+        - ...
+        """
+        x_arr = np.asarray(x, dtype=float).reshape(-1)
+        expected = len(self.parameters)
+        if x_arr.size != expected:
+            raise ValueError(f"Expected x of length {expected}, got {x_arr.size}")
+
+        k = 0
+
+        for p in self.global_parameters:
+            v = float(x_arr[k])
+            p.set(v)
+            if hasattr(p, '_value'):
+                object.__setattr__(p, '_value', v)
+            k += 1
+
+        for exp_params in self.local_parameters:
+            for p in exp_params:
+                v = float(x_arr[k])
+                p.set(v)
+                if hasattr(p, '_value'):
+                    object.__setattr__(p, '_value', v)
+                k += 1
+
+        # Update source-only blocks (no inputs) after parameter changes for all experiments.
+        for exp in self.experiments:
+            sim = getattr(exp.runner, 'sim', None)
+            if sim is None:
+                continue
+            for block in sim.blocks:
+                if hasattr(block, 'num_inputs') and block.num_inputs == 0:
+                    block.update(0.0)
+
+
 def free_param_to_var(param_name, value=None, bounds=(-np.inf, np.inf)):
     """Create a free (non-block) parameter for estimation.
 
@@ -764,7 +1276,7 @@ def free_param_to_var(param_name, value=None, bounds=(-np.inf, np.inf)):
     )   
 
 
-def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), id=None):
+def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), id=None, transform=None):
     """Create a block-bound parameter for estimation.
 
     Parameters
@@ -803,6 +1315,7 @@ def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), 
         name=id,
         value=value,
         bounds=bounds,
+        transform=transform,
     )
     
     
