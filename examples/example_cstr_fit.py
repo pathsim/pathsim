@@ -180,17 +180,14 @@ if __name__ == '__main__':
     # run the fitting routine
     fit = est.fit(loss='soft_l1', max_nfev=80, verbose=2)
 
-    # Plot
-    t_pred, y_pred = est.simulate(fit.x)
-    
-    plt.figure(figsize=(8, 5))
-    plt.plot(t_meas, y_meas, 'o', ms=5, alpha=0.6, label='Measured')
-    plt.plot(t_pred, y_pred, '-', lw=2, label=f'Fit')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Output')
-    plt.title('Parameter Estimation with Parameter Objects')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
-
+    # Display the results
     est.display()
+
+    # Plot fit results
+    fig, axes = est.plot_fit(
+        fit.x,
+        title="CSTR Fit",
+        xlabel="Time [s]",
+        ylabel="Concentration of C [mol/L]",
+    )
+    plt.show()

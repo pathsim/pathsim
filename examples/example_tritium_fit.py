@@ -225,8 +225,6 @@ if __name__ == '__main__':
     fit = est.fit(loss='soft_l1', max_nfev=80, verbose=2)
 
     # Plot
-
-
     sec2day = 1/(24*3600)
     t_pred, y_pred = est.simulate(fit.x)
 
