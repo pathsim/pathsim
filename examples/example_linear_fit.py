@@ -120,20 +120,27 @@ if __name__ == '__main__':
     # run the fitting routine
     fit = est.fit(loss='soft_l1', max_nfev=80, verbose=2)
 
-    # Plot model output vs both datasets
-    t_pred0, y_pred0 = est.simulate(fit.x, experiment=0)
-    t_pred1, y_pred1 = est.simulate(fit.x, experiment=1)
-
-    plt.figure(figsize=(8, 5))
-    plt.plot(t_meas, y_meas, 'o', ms=5, alpha=0.6, label='Measured 1 (exp0)')
-    plt.plot(t_meas2, y_meas2, 'o', ms=4, alpha=0.6, label='Measured 2 (exp1)')
-    plt.plot(t_pred0, y_pred0, '-', lw=2, label='Fit (exp0)')
-    plt.plot(t_pred1, y_pred1, '--', lw=2, label='Fit (exp1)')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Output')
-    plt.title('Parameter Estimation with Global + Local Parameters')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
-
+    # Display the results
     est.display()
+
+    # This will plot the fit for each experiment separately; 
+    # since we have a global parameter, the fits will be the same across experiments, 
+    # but this is just to illustrate the API. 
+    # You can also overlay them (see below).
+
+    # fig, axes = est.plot_fit(
+    #     fit.x,
+    #     title="Parameter Estimation with Global + Local Parameters",
+    #     xlabel="Time [s]",
+    #     ylabel="Output",
+    # )
+    # plt.show()
+
+    fig, axes = est.plot_fit(
+        fit.x,
+        overlay=True,
+        title="Fit (overlayed experiments)",
+        xlabel="Time [s]",
+        ylabel="Output",
+    )
+    plt.show()

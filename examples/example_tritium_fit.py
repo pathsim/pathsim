@@ -225,6 +225,8 @@ if __name__ == '__main__':
     fit = est.fit(loss='soft_l1', max_nfev=80, verbose=2)
 
     # Plot
+
+
     sec2day = 1/(24*3600)
     t_pred, y_pred = est.simulate(fit.x)
 
@@ -239,3 +241,12 @@ if __name__ == '__main__':
     plt.show()
 
     est.display()
+
+    fig, axes = est.plot_fit(
+        fit.x,
+        overlay=True,
+        title="Fit (overlayed experiments)",
+        xlabel="Time [s]",
+        ylabel="Output",
+    )
+    plt.show()

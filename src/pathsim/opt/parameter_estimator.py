@@ -1249,6 +1249,141 @@ class ParameterEstimator:
                     block.update(0.0)
 
 
+    def plot_fit(
+        self,
+        x: np.ndarray,
+        *,
+        experiments: list[int] | None = None,
+        overlay: bool = False,
+        show_measurements: bool = True,
+        show_predictions: bool = True,
+        prediction_style: str | None = None,
+        measurement_style: str | None = None,
+        fig=None,
+        axes=None,
+        title: str | None = None,
+        xlabel: str = "Time",
+        ylabel: str = "Output",
+        grid: bool = True,
+        legend: bool = True,
+    ):
+        """Plot measurements vs model prediction(s) for one or more experiments.
+
+        Parameters
+        ----------
+        x:
+            Parameter vector (e.g. fit.x).
+        experiments:
+            Experiment indices to plot. Defaults to all experiments that have datasets.
+        overlay:
+            If False (default), create one subplot per experiment.
+            If True, plot all experiments on the same axis.
+        show_measurements / show_predictions:
+            Toggle drawing measured points and predicted curves.
+        prediction_style / measurement_style:
+            Optional Matplotlib style strings, e.g. '-' or 'o'.
+        fig / axes:
+            Pass an existing figure/axes to draw into.
+        """
+        # Lazy import so core estimator doesn't require matplotlib at import-time
+        import matplotlib.pyplot as plt
+
+        if not hasattr(self, "experiments") or not self.experiments:
+            raise ValueError("No experiments configured to plot.")
+
+        # Default experiments: only those with measurements
+        if experiments is None:
+            experiments = [i for i, exp in enumerate(self.experiments) if getattr(exp, "measurements", None)]
+        if not experiments:
+            raise ValueError("No experiments with measurements to plot.")
+
+        # Create axes
+        if overlay:
+            if axes is None:
+                fig = fig if fig is not None else plt.figure(figsize=(8, 5))
+                ax = fig.gca()
+            else:
+                ax = axes
+            axes_list = [ax]
+        else:
+            if axes is None:
+                n = len(experiments)
+                fig, axes_list = plt.subplots(n, 1, sharex=True, figsize=(8, max(3, 3 * n)))
+                if n == 1:
+                    axes_list = [axes_list]
+            else:
+                # allow caller to pass list/array of axes
+                axes_list = list(axes)
+
+        # Helper for consistent styling
+        meas_style = measurement_style if measurement_style is not None else "o"
+        pred_style = prediction_style if prediction_style is not None else "-"
+
+        # Apply parameters once here; simulate() will run each experiment
+        # (simulate() should call apply(x) internally too; calling here is harmless but optional)
+        # self.apply(x)
+
+        for row, exp_idx in enumerate(experiments):
+            exp = self.experiments[exp_idx]
+            ax = axes_list[0] if overlay else axes_list[row]
+
+            # Measurements for this experiment
+            if show_measurements and getattr(exp, "measurements", None):
+                for j, meas in enumerate(exp.measurements):
+                    name = getattr(meas, "name", None) or f"meas{j}"
+                    ax.plot(
+                        meas.time,
+                        meas.data,
+                        meas_style,
+                        ms=5,
+                        alpha=0.6,
+                        label=f"{name} (exp{exp_idx})" if overlay else f"{name}",
+                    )
+
+            # Prediction: for now plot output_idx=0 for this experiment
+            # If you want multiple outputs per experiment, extend with output_idx list.
+            if show_predictions:
+                try:
+                    t_pred, y_pred = self.simulate(x, experiment=exp_idx)
+                    ax.plot(
+                        t_pred,
+                        y_pred,
+                        pred_style,
+                        lw=2,
+                        label=f"fit (exp{exp_idx})" if overlay else "fit",
+                    )
+                except Exception as e:
+                    # Don’t hard-crash plotting if one exp fails; let user see others
+                    ax.text(
+                        0.01,
+                        0.99,
+                        f"Prediction failed for exp{exp_idx}:\n{type(e).__name__}: {e}",
+                        transform=ax.transAxes,
+                        va="top",
+                        ha="left",
+                        fontsize=9,
+                    )
+
+            if not overlay:
+                ax.set_title(f"Experiment {exp_idx}" if title is None else title)
+
+            ax.set_ylabel(ylabel)
+            if grid:
+                ax.grid(True, alpha=0.3)
+
+            if legend:
+                ax.legend()
+
+        # Axis labels / title
+        axes_list[-1].set_xlabel(xlabel)
+        if overlay and title is not None:
+            axes_list[0].set_title(title)
+        elif overlay and title is None:
+            axes_list[0].set_title("Fit vs measurements")
+
+        return fig, axes_list
+
+
 def free_param_to_var(param_name, value=None, bounds=(-np.inf, np.inf)):
     """Create a free (non-block) parameter for estimation.
 
