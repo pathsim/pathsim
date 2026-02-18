@@ -22,6 +22,7 @@ FEATURES
 - Model output extraction from PathSim `Scope` via `ScopeSignal`
 - Stateful simulation reset + post-reset hooks via `SimRunner`
 - SciPy-based fitting (`least_squares` and `minimize`)
+- Currently supports multiple experiments with local and global parameters
 
 NOTES
 -----
@@ -32,7 +33,7 @@ NOTES
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Sequence
 
 import copy
 
@@ -41,6 +42,20 @@ import scipy.optimize as sci_opt
 
 from ..blocks._block import Block
 from .timeseries_data import TimeSeriesData
+
+__all__ = [
+    "Parameter",
+    "BlockParameter",
+    "FreeParameter",
+    "SharedBlockParameter",
+    "ScopeSignal",
+    "SimRunner",
+    "Experiment",
+    "ParameterEstimator",
+    "EstimatorResult",
+    "block_param_to_var",
+    "free_param_to_var",
+]
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PARAMETER DECLARATION
@@ -82,10 +97,10 @@ class Parameter:
         self,
         name: str,
         value: float = 1.0,
-        bounds: Tuple[float, float] = (-np.inf, np.inf),
-        transform: Optional[Callable[[float], float]] = None,
-        block: Optional[Any] = None,
-        attribute: Optional[str] = None,
+        bounds: tuple[float, float] = (-np.inf, np.inf),
+        transform: Callable[[float], float] | None = None,
+        block: Any | None = None,
+        attribute: str | None = None,
     ):
         self.name = name
         self._value = float(value)
@@ -203,11 +218,11 @@ class SharedBlockParameter(Parameter):
     def __init__(
         self,
         name: str,
-        targets: List[Any],
+        targets: list[Any],
         attribute: str,
         value: float = 1.0,
-        bounds: Tuple[float, float] = (-np.inf, np.inf),
-        transform: Optional[Callable[[float], float]] = None,
+        bounds: tuple[float, float] = (-np.inf, np.inf),
+        transform: Callable[[float], float] | None = None,
     ):
         if not targets:
             raise ValueError("targets must be a non-empty list")
@@ -280,7 +295,7 @@ class ScopeSignal:
 
         return t_arr, np.asarray(y_port, dtype=float).reshape(-1)
 
-    def read(self) -> Tuple[np.ndarray, np.ndarray]:
+    def read(self) -> tuple[np.ndarray, np.ndarray]:
         """Read `(t, y)` from the scope and extract the selected port."""
         if self.scope is None:
             raise ValueError("ScopeSignal.scope is None; it must be resolved before reading")
@@ -318,7 +333,7 @@ class SimRunner:
     sim: object
     output: ScopeSignal
     duration: float
-    post_reset_hooks: List[Callable[[], None]] | None = None
+    post_reset_hooks: list[Callable[[], None]] | None = None
     pre_run: Callable[[], None] | None = None
     adaptive: bool = False
     reset_time: float = 0.0
@@ -339,7 +354,7 @@ class SimRunner:
         return self
 
 
-    def __call__(self, _x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def __call__(self, _x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Run the simulation and return the configured output."""
         self.run()
         return self.output.read()
@@ -388,9 +403,9 @@ class Experiment:
 
     runner: Any
     duration: float | None = None
-    measurements: List[TimeSeriesData] | None = None
-    outputs: List[ScopeSignal] | None = None
-    sigma: List[float | None] | None = None
+    measurements: list[TimeSeriesData] | None = None
+    outputs: list[ScopeSignal] | None = None
+    sigma: list[float | None] | None = None
 
     def __post_init__(self) -> None:
         if self.measurements is None:
@@ -438,29 +453,28 @@ class ParameterEstimator:
 
     def __init__(
         self,
-        parameters: Optional[List] = None,
+        parameters: list[Parameter] | None = None,
         simulator=None,
         measurement=None,
         outputs=None,
-        duration: Optional[float] = None,
+        duration: float | None = None,
         adaptive: bool = False,
-        pre_run: Optional[Callable] = None,
-        # after_reset: Optional[Callable] = None,
-        sigma: Union[float, np.ndarray] = None,
+        pre_run: Callable | None = None,
+        sigma: float | np.ndarray | None = None,
     ):
         if parameters is None:
             parameters = []
 
         # Global/shared parameters (applied to all experiments)
-        self.global_parameters: List[Parameter] = []
+        self.global_parameters: list[Parameter] = []
         # Local parameters per experiment (applied only to that experiment)
-        self.local_parameters: List[List[Parameter]] = []
+        self.local_parameters: list[list[Parameter]] = []
 
         # Backwards compatibility: treat provided parameters list as global
         self.global_parameters.extend(parameters)
 
         # Prefer experiments as the primary internal structure (supports multi-run fitting)
-        self.experiments: List[Experiment] = []
+        self.experiments: list[Experiment] = []
 
         # Keep a reference simulator for cloning experiments (deepcopy)
         self._base_simulator = simulator if simulator is not None and hasattr(simulator, 'run') else None
@@ -492,7 +506,7 @@ class ParameterEstimator:
             outputs_list = list(outputs) if outputs is not None else [None] * len(measurement_list)
 
         if sigma is None:
-            sigma_list: List[float | None] = [None] * len(measurement_list)
+            sigma_list: list[float | None] = [None] * len(measurement_list)
         elif isinstance(sigma, (list, np.ndarray)):
             sigma_list = [float(s) if s is not None else None for s in sigma]
         else:
@@ -525,9 +539,9 @@ class ParameterEstimator:
 
 
     @property
-    def parameters(self) -> List[Parameter]:
+    def parameters(self) -> list[Parameter]:
         """Flattened parameter list in optimizer order: globals then locals by experiment."""
-        params: List[Parameter] = []
+        params: list[Parameter] = []
         params.extend(self.global_parameters)
         for exp_params in self.local_parameters:
             params.extend(exp_params)
@@ -541,19 +555,25 @@ class ParameterEstimator:
 
 
     def _update_duration_from_measurements(self) -> None:
-        """Update experiment runner durations from their measurements (unless explicitly overridden)."""
-        # Per-experiment durations
+        """Update experiment runner durations from their measurements.
+
+        Explicit durations passed to :meth:`add_experiment` are preserved;
+        measurement-derived durations are used only as a floor.
+        """
         for exp in self.experiments:
             if not exp.measurements:
                 continue
 
             derived = float(max(meas.time.max() for meas in exp.measurements))
-            dur = float(exp.duration) if exp.duration is not None else derived
+
+            if exp.duration is not None:
+                dur = max(float(exp.duration), derived)
+            else:
+                dur = derived
 
             if hasattr(exp.runner, "duration"):
                 exp.runner.duration = dur
 
-        # Convenience overall duration
         all_meas = [m for exp in self.experiments for m in (exp.measurements or [])]
         self.duration = float(max((m.time.max() for m in all_meas), default=0.0))
 
@@ -670,7 +690,7 @@ class ParameterEstimator:
 
     def add_timeseries(
         self,
-        ts: "TimeSeriesData",
+        ts: TimeSeriesData,
         *,
         scope: object | None = None,
         port: int | None = None,
@@ -678,7 +698,24 @@ class ParameterEstimator:
         sigma: float | None = None,
         experiment: int = 0,
     ) -> "ParameterEstimator":
-        """Add a measurement and map it to a scope port for a given experiment."""
+        """Add a measurement and map it to a scope port for a given experiment.
+
+        Parameters
+        ----------
+        ts : TimeSeriesData
+            Measurement dataset.
+        scope : object, optional
+            Scope block with ``.read()`` method.
+        port : int, optional
+            Port index on the scope.
+        signal : object, optional
+            PortReference (e.g. ``scope[0]``). Pass either ``signal=`` or
+            ``scope=``/``port=``, not both.
+        sigma : float, optional
+            Measurement noise scaling for residual normalization.
+        experiment : int
+            Experiment index to attach this dataset to.
+        """
         if not isinstance(ts, TimeSeriesData):
             raise TypeError(f"add_timeseries expects TimeSeriesData, got {type(ts).__name__}")
 
@@ -692,8 +729,8 @@ class ParameterEstimator:
         if scope is None or port is None:
             raise ValueError("You must pass either scope=..., port=... or signal=scope[0].")
 
-        # If scope belongs to experiment 0 sim, store an occurrence selector so
-        # the correct (deep-copied) scope for each experiment can be resolved.
+        # For multi-experiment fitting, store a (type, occurrence) selector so the
+        # correct deep-copied scope can be resolved per experiment at run time.
         block_type = None
         occurrence = None
         sim0 = getattr(self.experiments[0].runner, 'sim', None) if self.experiments else None
@@ -725,21 +762,34 @@ class ParameterEstimator:
         param_name,
         value=None,
         bounds=(-np.inf, np.inf),
-        id=None,
-        transform: Optional[Callable[[float], float]] = None,
-        **_kwargs,
+        param_id=None,
+        transform: Callable[[float], float] | None = None,
     ) -> "ParameterEstimator":
         """Add a block-bound parameter as a global parameter.
 
-        This final definition intentionally lives at the end of the class so it
-        overrides any earlier duplicate definitions.
+        For multi-experiment shared parameters, use :meth:`add_global_block_parameter`.
+
+        Parameters
+        ----------
+        block : object
+            Target block instance.
+        param_name : str
+            Attribute name on the block.
+        value : float, optional
+            Initial optimizer-space value. Defaults to current attribute value.
+        bounds : tuple of float
+            ``(lower, upper)`` bounds in optimizer space.
+        param_id : str, optional
+            Human-readable prefix for the parameter name.
+        transform : callable, optional
+            Mapping from optimizer space to model space (e.g. ``np.exp``).
         """
         param = block_param_to_var(
             block,
             param_name,
             value=value,
             bounds=bounds,
-            id=id,
+            param_id=param_id,
             transform=transform,
         )
         self.global_parameters.append(param)
@@ -752,9 +802,9 @@ class ParameterEstimator:
         param_name: str,
         *,
         value: float | None = None,
-        bounds: Tuple[float, float] = (-np.inf, np.inf),
-        id: str | None = None,
-        transform: Optional[Callable[[float], float]] = None,
+        bounds: tuple[float, float] = (-np.inf, np.inf),
+        param_id: str | None = None,
+        transform: Callable[[float], float] | None = None,
     ) -> "ParameterEstimator":
         """Add a single global parameter applied to the same block attribute in every experiment.
 
@@ -774,7 +824,7 @@ class ParameterEstimator:
         if not self.experiments:
             raise ValueError("No experiments configured. Pass simulator=... or call add_experiment().")
 
-        targets: List[Any] = []
+        targets: list[Any] = []
         for exp in self.experiments:
             sim = getattr(exp.runner, 'sim', None)
             if sim is None:
@@ -791,7 +841,7 @@ class ParameterEstimator:
                 raise AttributeError(f"Block '{block_name}' has no attribute '{param_name}'")
             targets.append(match)
 
-        pname = f"{block_name}.{param_name}" if id is None else f"{id}.{param_name}"
+        pname = f"{param_id}.{param_name}" if param_id is not None else f"{block_name}.{param_name}"
         if value is None:
             value = float(getattr(targets[0], param_name))
 
@@ -814,30 +864,15 @@ class ParameterEstimator:
         return self
 
 
-    # The following legacy duplicate without `transform` has been removed to prevent
-    # overriding the transform-aware add_block_parameter above.
-    # (Intentionally left as a comment for context.)
-    #
-    # def add_block_parameter(self, block, param_name, value=None, bounds=(-np.inf, np.inf), id=None) -> "ParameterEstimator":
-    #     """Backwards compatible: adds block parameter as global (applies only to bound block instance).
-    #
-    #     For multi-experiment usage, prefer `add_global_block_parameter(...)` or
-    #     `add_local_block_parameter(...)`.
-    #     """
-    #     param = block_param_to_var(block, param_name, value=value, bounds=bounds, id=id)
-    #     self.global_parameters.append(param)
-    #     return self
-
-
     def add_global_block_parameter(
         self,
         block_name: str,
         param_name: str,
         *,
         value: float | None = None,
-        bounds: Tuple[float, float] = (-np.inf, np.inf),
-        id: str | None = None,
-        transform: Optional[Callable[[float], float]] = None,
+        bounds: tuple[float, float] = (-np.inf, np.inf),
+        param_id: str | None = None,
+        transform: Callable[[float], float] | None = None,
     ) -> "ParameterEstimator":
         """Alias for shared/global block parameter across all experiments."""
         return self.add_shared_block_parameter(
@@ -845,7 +880,7 @@ class ParameterEstimator:
             param_name,
             value=value,
             bounds=bounds,
-            id=id,
+            param_id=param_id,
             transform=transform,
         )
 
@@ -857,8 +892,8 @@ class ParameterEstimator:
         param_name: str,
         *,
         value: float | None = None,
-        bounds: Tuple[float, float] = (-np.inf, np.inf),
-        id: str | None = None,
+        bounds: tuple[float, float] = (-np.inf, np.inf),
+        param_id: str | None = None,
     ) -> "ParameterEstimator":
         """Add an experiment-local block parameter (distinct value per experiment)."""
         self._ensure_experiment(experiment)
@@ -878,10 +913,10 @@ class ParameterEstimator:
         if not hasattr(match, param_name):
             raise AttributeError(f"Block '{block_name}' has no attribute '{param_name}'")
 
-        if id is None:
+        if param_id is None:
             pname = f"exp{experiment}.{block_name}.{param_name}"
         else:
-            pname = f"{id}.exp{experiment}.{param_name}"
+            pname = f"{param_id}.exp{experiment}.{param_name}"
 
         if value is None:
             value = float(getattr(match, param_name))
@@ -922,57 +957,6 @@ class ParameterEstimator:
         )
 
 
-    def add_timeseries(
-        self,
-        ts: "TimeSeriesData",
-        *,
-        scope: object | None = None,
-        port: int | None = None,
-        signal: object | None = None,
-        sigma: float | None = None,
-        experiment: int = 0,
-    ) -> "ParameterEstimator":
-        """Add a measurement and map it to a scope port for a given experiment."""
-        if not isinstance(ts, TimeSeriesData):
-            raise TypeError(f"add_timeseries expects TimeSeriesData, got {type(ts).__name__}")
-
-        self._ensure_experiment(experiment)
-
-        if signal is not None:
-            if scope is not None or port is not None:
-                raise ValueError("Pass either `signal=` OR (`scope=`, `port=`), not both.")
-            scope, port = self._scope_port_from_signal(signal)
-
-        if scope is None or port is None:
-            raise ValueError("You must pass either scope=..., port=... or signal=scope[0].")
-
-        # If scope belongs to experiment 0 sim, store an occurrence selector so
-        # the correct (deep-copied) scope for each experiment can be resolved.
-        block_type = None
-        occurrence = None
-        sim0 = getattr(self.experiments[0].runner, 'sim', None) if self.experiments else None
-        if sim0 is not None:
-            try:
-                block_type, occurrence = self._block_occurrence(sim0, scope)
-            except Exception:
-                block_type, occurrence = None, None
-
-        exp = self.experiments[experiment]
-        exp.measurements.append(ts)
-        exp.outputs.append(
-            ScopeSignal(
-                scope=None if block_type is not None else scope,
-                port=int(port),
-                block_type=block_type,
-                occurrence=occurrence,
-            )
-        )
-        exp.sigma.append(float(sigma) if sigma is not None else None)
-
-        self._update_duration_from_measurements()
-        return self
-
-
     def simulate(self, x: np.ndarray, output_idx: int = 0, *, experiment: int = 0):
         """Simulate a selected experiment and return one of its mapped outputs.
 
@@ -1008,7 +992,7 @@ class ParameterEstimator:
         self._update_duration_from_measurements()
         self.apply(x)
 
-        all_residuals: List[np.ndarray] = []
+        all_residuals: list[np.ndarray] = []
 
         for exp_idx, exp in enumerate(self.experiments):
             if not exp.measurements:
@@ -1057,23 +1041,47 @@ class ParameterEstimator:
         return np.concatenate(all_residuals)
 
 
-    def display(self):  
-        
-        for param in self.parameters:
-            print(f"{param.name}: {param()}")
+    def display(self) -> None:
+        """Print a summary of all parameters and their current values."""
+        print("=" * 60)
+        print("Parameter Estimation Results")
+        print("=" * 60)
+
+        if self.global_parameters:
+            print("\nGlobal parameters:")
+            print("-" * 40)
+            for p in self.global_parameters:
+                transformed = p()
+                if p.transform is not None:
+                    print(f"  {p.name:30s}  x={p.value:.6g}  ->  {transformed:.6g}")
+                else:
+                    print(f"  {p.name:30s}  = {transformed:.6g}")
+
+        for i, exp_params in enumerate(self.local_parameters):
+            if exp_params:
+                print(f"\nLocal parameters (experiment {i}):")
+                print("-" * 40)
+                for p in exp_params:
+                    transformed = p()
+                    if p.transform is not None:
+                        print(f"  {p.name:30s}  x={p.value:.6g}  ->  {transformed:.6g}")
+                    else:
+                        print(f"  {p.name:30s}  = {transformed:.6g}")
+
+        print("=" * 60)
 
 
     def fit(
         self,
         *,
-        x0: Optional[Sequence[float]] = None,
-        bounds: Tuple[Sequence[float], Sequence[float]] | None = None,
+        x0: Sequence[float] | None = None,
+        bounds: tuple[Sequence[float], Sequence[float]] | None = None,
         loss: str = "linear",
         f_scale: float = 1.0,
         max_nfev: int = 80,
         verbose: int = 0,
         method: str = "least_squares",
-        constraints: Optional[List[dict]] = None,
+        constraints: list[dict] | None = None,
     ) -> EstimatorResult:
         """Fit parameters using SciPy optimizers.
 
@@ -1225,18 +1233,12 @@ class ParameterEstimator:
         k = 0
 
         for p in self.global_parameters:
-            v = float(x_arr[k])
-            p.set(v)
-            if hasattr(p, '_value'):
-                object.__setattr__(p, '_value', v)
+            p.set(float(x_arr[k]))
             k += 1
 
         for exp_params in self.local_parameters:
             for p in exp_params:
-                v = float(x_arr[k])
-                p.set(v)
-                if hasattr(p, '_value'):
-                    object.__setattr__(p, '_value', v)
+                p.set(float(x_arr[k]))
                 k += 1
 
         # Update source-only blocks (no inputs) after parameter changes for all experiments.
@@ -1393,15 +1395,15 @@ def free_param_to_var(param_name, value=None, bounds=(-np.inf, np.inf)):
         Parameter name.
     value : float
         Initial value (optimizer space).
-    bounds : tuple[float, float]
-        Lower/upper bounds.
+    bounds : tuple of float
+        ``(lower, upper)`` bounds.
 
     Returns
     -------
     Parameter
         Free parameter instance.
     """
-    if value is None:   
+    if value is None:
         raise ValueError("Initial value must be provided for free parameters.")
 
     return FreeParameter(
@@ -1411,7 +1413,7 @@ def free_param_to_var(param_name, value=None, bounds=(-np.inf, np.inf)):
     )   
 
 
-def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), id=None, transform=None):
+def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), param_id=None, transform=None):
     """Create a block-bound parameter for estimation.
 
     Parameters
@@ -1424,8 +1426,10 @@ def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), 
         Initial value; defaults to current block attribute.
     bounds : tuple[float, float]
         Lower/upper bounds.
-    id : str, optional
+    param_id : str, optional
         Identifier prefix for the parameter name.
+    transform : callable, optional
+        Mapping from optimizer space to model space.
 
     Returns
     -------
@@ -1436,10 +1440,10 @@ def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), 
     if not hasattr(block, param_name):
         raise AttributeError(f"Block '{block}' has no attribute '{param_name}'")
     
-    if id is None:
-        id = f"{block.__class__.__name__}.{param_name}"
+    if param_id is None:
+        name = f"{block.__class__.__name__}.{param_name}"
     else:
-        id = f"{id}.{param_name}"
+        name = f"{param_id}.{param_name}"
 
     if value is None:
         value = getattr(block, param_name)
@@ -1447,44 +1451,15 @@ def block_param_to_var(block, param_name, value=None, bounds=(-np.inf, np.inf), 
     return BlockParameter(
         block=block,
         attribute=param_name,
-        name=id,
+        name=name,
         value=value,
         bounds=bounds,
         transform=transform,
     )
-    
-    
-def get_block_dict(sim, globals_dict=None):
-    """Build lookup dictionaries for blocks contained in a simulation.
 
-    Parameters
-    ----------
-    sim : pathsim.Simulation
-        Simulation containing blocks.
-    globals_dict : dict, optional
-        Namespace mapping to search. If omitted, uses this module's globals.
-
-    Returns
-    -------
-    (dict, dict)
-        `(block_dict, lookup_dict)` where `block_dict[name] -> block` and
-        `lookup_dict[block] -> name`.
-
-    Notes
-    -----
-    This helper depends on the namespace provided; if called from imported code,
-    pass the caller's `globals()` explicitly.
-    """
-    block_dict = {}
-    lookup_dict = {}
-    
-    # This fails to find blocks if this function is called from an imported module, since it looks at the global scope of that module instead of the caller's global scope where the blocks are defined. I don't have a better way to get the caller's globals() dict without moding pathsim to pass it in.
-    if globals_dict is None:
-        globals_dict = globals()
-    
-    for name, obj in globals_dict.items():
-        if isinstance(obj, Block) and obj in sim.blocks:
-            block_dict[name] = obj
-            lookup_dict[obj] = name
-            
-    return block_dict, lookup_dict
+# NOTE: get_block_dict was removed.
+# It relied on the caller's globals() which is unreliable when imported.
+# Users should build block lookups explicitly:
+#
+#   block_dict = {name: obj for name, obj in locals().items()
+#                 if isinstance(obj, Block) and obj in sim.blocks}

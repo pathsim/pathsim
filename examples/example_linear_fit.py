@@ -2,6 +2,10 @@
 ##
 ##            PathSim example of parameter estimation using time series data
 ##
+##  Model:   y(t) = gain * t + offset  (integrator with initial value as offset)
+##  Data:    Two synthetic datasets with different offsets but the same slope.
+##  Fit:     gain (global, shared) + initial_value (local, per-experiment).
+##
 #########################################################################################
 
 # IMPORTS ===============================================================================
@@ -99,11 +103,11 @@ if __name__ == '__main__':
     est.add_experiment(sim, adaptive=True, copy_sim=True)
 
     # Global parameter (shared across experiments)
-    est.add_global_block_parameter('Constant', 'value', id='gain', value=3)
+    est.add_global_block_parameter('Constant', 'value', param_id='gain', value=3)
 
     # Local parameters (one per experiment)
-    est.add_local_block_parameter(0, 'Integrator', 'initial_value', id='integrator', bounds=(0.0, 5), value=0.5)
-    est.add_local_block_parameter(1, 'Integrator', 'initial_value', id='integrator', bounds=(0.0, 5), value=4.0)
+    est.add_local_block_parameter(0, 'Integrator', 'initial_value', param_id='integrator', bounds=(0.0, 5), value=0.5)
+    est.add_local_block_parameter(1, 'Integrator', 'initial_value', param_id='integrator', bounds=(0.0, 5), value=4.0)
 
     print(est.parameters)
 

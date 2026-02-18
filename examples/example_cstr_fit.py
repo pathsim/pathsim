@@ -19,6 +19,8 @@ from pathsim.blocks import (
 from pathsim.opt import Parameter, ParameterEstimator, TimeSeriesData
 from pathsim.solvers import SSPRK22
 
+from scipy.special import exp10
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # USER-DEFINED CODE
@@ -45,8 +47,8 @@ A = 0.1       # Heat transfer area [m²]
 R = 8.314     # Gas constant [J/(mol·K)]
 
 # System parameters to estimate
-k1_0 = Parameter("k1_0", value=1e8, bounds=(1e2, 1e10))
-k2_0 = Parameter("k2_0", value=6e9, bounds=(1e2, 1e10))
+k1_0 = Parameter("k1_0", value=8, bounds=(2, 10), transform=exp10)
+k2_0 = Parameter("k2_0", value=8.5, bounds=(2, 11), transform=exp10)
 
 
 def reaction_rates(x, u, t):

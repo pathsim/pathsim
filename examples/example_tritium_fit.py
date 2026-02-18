@@ -212,9 +212,9 @@ if __name__ == '__main__':
         adaptive=True,
     )
 
-    # DAdd block parameters to estimate
-    est.add_block_parameter(k_wall, 'value', id='k_wall', transform=exp10, value=0.2, bounds=(-1, 1))
-    est.add_block_parameter(k_top, 'value', id='k_top', transform=exp10, value=0.3, bounds=(-1, 1))
+    # Add block parameters to estimate
+    est.add_block_parameter(k_wall, 'value', param_id='k_wall', transform=exp10, value=0.2, bounds=(-1, 1))
+    est.add_block_parameter(k_top, 'value', param_id='k_top', transform=exp10, value=0.3, bounds=(-1, 1))
 
     print(est.parameters)
 
