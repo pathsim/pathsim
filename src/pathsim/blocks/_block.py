@@ -261,26 +261,6 @@ class Block:
             }
 
 
-    def get_params(self):
-        """Return constructor parameters as a dict with actual instance values.
-
-        Inspects the ``__init__`` signature and retrieves the corresponding
-        attributes from the instance, skipping ``self``, ``name``, ``*args``
-        and ``**kwargs``.
-
-        Returns
-        -------
-        params : dict
-            mapping of parameter names to their current values
-        """
-        sig = inspect.signature(self.__init__)
-        return {
-            name: getattr(self, name)
-            for name, param in sig.parameters.items()
-            if name not in ("self", "kwargs", "args", "name") and hasattr(self, name)
-            }
-
-
     # methods for visualization ---------------------------------------------------------
 
     def plot(self, *args, **kwargs):
