@@ -15,7 +15,8 @@ import numpy as np
 from pathsim.blocks.ode import ODE
 
 #base solver for testing
-from pathsim.solvers._solver import Solver 
+from pathsim.solvers._solver import Solver
+from pathsim.solvers.euler import EUF, EUB
 
 
 # TESTS ================================================================================
@@ -120,6 +121,46 @@ class TestODE(unittest.TestCase):
 
         #test if engine state is retrieved correctly
         self.assertEqual(D.outputs[0], 0.0)
+
+
+    def test_solve(self):
+
+        def f(x, u, t):
+            return -x + u
+        def J(x, u, t):
+            return -1.0
+
+        D = ODE(func=f, initial_value=1.0, jac=J)
+        D.set_solver(EUB, None)
+
+        #buffer state before solve
+        D.engine.buffer(0.01)
+
+        #call solve to exercise the implicit update path
+        D.inputs[0] = 2.0
+        err = D.solve(0, 0.01)
+
+        #error should be a numeric value
+        self.assertIsInstance(err, (int, float, np.floating))
+
+
+    def test_step(self):
+
+        def f(x, u, t):
+            return -x
+
+        D = ODE(func=f, initial_value=1.0)
+        D.set_solver(EUF, None)
+
+        #buffer state before step
+        D.engine.buffer(0.01)
+
+        #call step to exercise the explicit update path
+        D.inputs[0] = 0.0
+        success, error, scale = D.step(0, 0.01)
+
+        #step should succeed
+        self.assertTrue(success)
 
 
 # RUN TESTS LOCALLY ====================================================================

@@ -285,6 +285,41 @@ class TestAntiWindupPID(unittest.TestCase):
         self.assertTrue(isinstance(pid.engine, Solver))
 
 
+    def test_dynamics_within_limits(self):
+
+        #when output is within limits, anti-windup feedback w=0
+        pid = AntiWindupPID(Kp=1, Ki=0.5, Kd=0, f_max=100, Ks=10, limits=[-10, 10])
+        pid.set_solver(Solver, None)
+
+        x = np.array([0.0, 0.0])
+        u = np.array([1.0])
+
+        dx = pid.op_dyn(x, u, 0)
+
+        #dx1 = f_max * (u0 - x1) = 100 * (1 - 0) = 100
+        self.assertAlmostEqual(dx[0], 100.0)
+        #dx2 = u0 - w, with w=0 since y = Kp*u0 + Ki*x2 + Kd*f_max*(u0-x1) = 1 within limits
+        self.assertAlmostEqual(dx[1], 1.0)
+
+
+    def test_dynamics_outside_limits(self):
+
+        #when output exceeds limits, anti-windup feedback kicks in
+        pid = AntiWindupPID(Kp=20, Ki=0.5, Kd=0, f_max=100, Ks=10, limits=[-5, 5])
+        pid.set_solver(Solver, None)
+
+        x = np.array([0.0, 0.0])
+        u = np.array([1.0])
+
+        dx = pid.op_dyn(x, u, 0)
+
+        #y = Kp*u0 + Ki*x2 + Kd*f_max*(u0-x1) = 20*1 + 0 + 0 = 20 (exceeds limit 5)
+        #w = Ks * (y - clip(y, -5, 5)) = 10 * (20 - 5) = 150
+        #dx2 = u0 - w = 1 - 150 = -149
+        self.assertAlmostEqual(dx[0], 100.0)
+        self.assertAlmostEqual(dx[1], -149.0)
+
+
 class TestRateLimiter(unittest.TestCase):
     """Test the implementation of the 'RateLimiter' block class"""
 
@@ -366,6 +401,34 @@ class TestBacklash(unittest.TestCase):
         #output should be engine state (initially 0)
         bl.update(0)
         self.assertAlmostEqual(bl.outputs[0], 0.0)
+
+
+    def test_dynamics_inside_deadzone(self):
+
+        #when gap < width/2, no movement
+        bl = Backlash(width=2.0, f_max=100)
+        bl.set_solver(Solver, None)
+
+        #u=0.5, x=0 -> gap=0.5, hw=1.0 -> gap within [-1, 1] -> dx=0
+        dx = bl.op_dyn(0.0, 0.5, 0)
+        self.assertAlmostEqual(float(dx), 0.0)
+
+
+    def test_dynamics_outside_deadzone(self):
+
+        #when gap > width/2, output tracks
+        bl = Backlash(width=1.0, f_max=100)
+        bl.set_solver(Solver, None)
+
+        #u=2.0, x=0 -> gap=2.0, hw=0.5 -> clip(2.0, -0.5, 0.5)=0.5
+        #dx = f_max * (gap - clip(gap)) = 100 * (2.0 - 0.5) = 150
+        dx = bl.op_dyn(0.0, 2.0, 0)
+        self.assertAlmostEqual(float(dx), 150.0)
+
+        #negative direction: u=-3.0, x=0 -> gap=-3.0, clip(-3,-0.5,0.5)=-0.5
+        #dx = 100 * (-3.0 - (-0.5)) = 100 * (-2.5) = -250
+        dx = bl.op_dyn(0.0, -3.0, 0)
+        self.assertAlmostEqual(float(dx), -250.0)
 
 
 class TestDeadband(unittest.TestCase):

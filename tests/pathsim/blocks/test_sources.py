@@ -18,6 +18,7 @@ from pathsim.blocks.sources import (
 )
 from pathsim.events.schedule import Schedule, ScheduleList
 from pathsim.solvers import EUF
+from pathsim.solvers.euler import EUB
 
 
 # TESTS ================================================================================
@@ -258,6 +259,40 @@ class TestSinusoidalPhaseNoiseSource(unittest.TestCase):
         S = SinusoidalPhaseNoiseSource()
         self.assertEqual(len(S), 0)
 
+    def test_continuous_sampling(self):
+        #sampling_period=None means continuous sampling
+        S = SinusoidalPhaseNoiseSource(sampling_period=None)
+        S.set_solver(EUF, None)
+
+        n1_before = S.noise_1
+        n2_before = S.noise_2
+
+        S.sample(0, 0.01)
+
+        #noise should be re-sampled
+        #(statistically will almost never be the same)
+        self.assertTrue(
+            S.noise_1 != n1_before or S.noise_2 != n2_before
+        )
+
+    def test_solve(self):
+        S = SinusoidalPhaseNoiseSource()
+        S.set_solver(EUB, None)
+
+        S.engine.buffer(0.01)
+        err = S.solve(0, 0.01)
+        self.assertEqual(err, 0.0)
+
+    def test_step(self):
+        S = SinusoidalPhaseNoiseSource()
+        S.set_solver(EUF, None)
+
+        S.engine.buffer(0.01)
+        success, error, scale = S.step(0, 0.01)
+        self.assertTrue(success)
+        self.assertEqual(error, 0.0)
+        self.assertIsNone(scale)
+
 
 class TestChirpPhaseNoiseSource(unittest.TestCase):
     """Test the implementation of the 'ChirpPhaseNoiseSource' block class"""
@@ -309,6 +344,37 @@ class TestChirpPhaseNoiseSource(unittest.TestCase):
     def test_len(self):
         C = ChirpPhaseNoiseSource()
         self.assertEqual(len(C), 0)
+
+    def test_reset(self):
+        C = ChirpPhaseNoiseSource()
+        n1 = C.noise_1
+        C.reset()
+        #noise should be re-sampled on reset
+        #cannot assert inequality (random), just ensure it runs
+        self.assertIsNotNone(C.noise_1)
+
+    def test_continuous_sampling(self):
+        C = ChirpPhaseNoiseSource(sampling_period=None)
+        C.set_solver(EUF, None)
+        C.sample(0, 0.01)
+        #just ensure it runs without error
+        self.assertIsNotNone(C.noise_1)
+
+    def test_solve(self):
+        C = ChirpPhaseNoiseSource()
+        C.set_solver(EUB, None)
+        C.engine.buffer(0.01)
+        err = C.solve(0, 0.01)
+        self.assertEqual(err, 0.0)
+
+    def test_step(self):
+        C = ChirpPhaseNoiseSource()
+        C.set_solver(EUF, None)
+        C.engine.buffer(0.01)
+        success, error, scale = C.step(0, 0.01)
+        self.assertTrue(success)
+        self.assertEqual(error, 0.0)
+        self.assertIsNone(scale)
 
 
 class TestChirpSource(unittest.TestCase):

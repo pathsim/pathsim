@@ -34,6 +34,10 @@ from pathsim._constants import (
     SIM_ITERATIONS_MAX
     )
 
+from pathsim.blocks import Source, Relay
+from pathsim.events.schedule import Schedule
+from pathsim.events._event import Event
+
 
 # TESTS ================================================================================
 
@@ -472,6 +476,324 @@ class TestSimulationIVP(unittest.TestCase):
 
 
 
+
+class TestSimulationEvents(unittest.TestCase):
+    """Test event management and event handling during simulation"""
+
+    def test_add_event(self):
+        """Test adding events to simulation"""
+
+        Sim = Simulation(log=False)
+
+        evt = Event(func_evt=lambda t: t - 1.0, func_act=lambda t: None)
+        Sim.add_event(evt)
+        self.assertEqual(len(Sim.events), 1)
+        self.assertIn(evt, Sim.events)
+
+        #adding same event again raises ValueError
+        with self.assertRaises(ValueError):
+            Sim.add_event(evt)
+
+
+    def test_contains_event(self):
+        """Test __contains__ for events"""
+
+        evt = Event(func_evt=lambda t: t - 1.0)
+        evt2 = Event(func_evt=lambda t: t - 2.0)
+
+        B1, B2 = Block(), Block()
+        C1 = Connection(B1, B2)
+        Sim = Simulation(
+            blocks=[B1, B2],
+            connections=[C1],
+            events=[evt],
+            log=False
+            )
+
+        self.assertIn(evt, Sim)
+        self.assertNotIn(evt2, Sim)
+
+
+    def test_run_with_schedule_event(self):
+        """Test simulation with schedule event covering event system paths"""
+
+        #simple system: integrator with source
+        Src = Source(lambda t: 1.0)
+        Int = Integrator(0.0)
+        Sco = Scope(labels=["output"])
+
+        #schedule event that fires periodically
+        counter = [0]
+        def count_action(t):
+            counter[0] += 1
+
+        evt = Schedule(t_start=0.0, t_period=0.5, func_act=count_action)
+
+        Sim = Simulation(
+            blocks=[Src, Int, Sco],
+            connections=[
+                Connection(Src, Int),
+                Connection(Int, Sco)
+                ],
+            events=[evt],
+            dt=0.01,
+            log=False
+            )
+
+        Sim.run(duration=2.0, reset=True)
+
+        #schedule should have fired multiple times
+        self.assertGreater(counter[0], 0)
+        self.assertAlmostEqual(Sim.time, 2.0, 2)
+
+
+    def test_run_with_relay_block(self):
+        """Test simulation with Relay block that has internal events"""
+
+        #ramp source crosses relay thresholds
+        Src = Source(lambda t: t - 1.0)  # crosses 0 at t=1
+        Rly = Relay(threshold_up=0.5, threshold_down=-0.5, value_up=10.0, value_down=-10.0)
+        Sco = Scope(labels=["relay"])
+
+        Sim = Simulation(
+            blocks=[Src, Rly, Sco],
+            connections=[
+                Connection(Src, Rly),
+                Connection(Rly, Sco)
+                ],
+            dt=0.01,
+            log=False
+            )
+
+        Sim.run(duration=3.0, reset=True)
+        self.assertAlmostEqual(Sim.time, 3.0, 1)
+
+
+    def test_reset_with_events(self):
+        """Test that reset clears event state"""
+
+        counter = [0]
+        evt = Schedule(t_start=0, t_period=1.0, func_act=lambda t: None)
+
+        B1 = Block()
+        Sim = Simulation(blocks=[B1], events=[evt], log=False)
+
+        Sim.run(duration=3.0)
+        events_before = len(evt)
+
+        #reset should clear event times
+        Sim.reset()
+        self.assertEqual(len(evt), 0)
+        self.assertEqual(Sim.time, 0.0)
+
+
+class TestSimulationAdvanced(unittest.TestCase):
+    """Test advanced simulation features"""
+
+    def setUp(self):
+        """Set up a simple feedback system for reuse"""
+        self.Int = Integrator(1.0)
+        self.Amp = Amplifier(-1)
+        self.Add = Adder()
+        self.Sco = Scope(labels=["response"])
+
+        blocks = [self.Int, self.Amp, self.Add, self.Sco]
+        connections = [
+            Connection(self.Amp, self.Add[1]),
+            Connection(self.Add, self.Int),
+            Connection(self.Int, self.Amp, self.Sco)
+            ]
+
+        self.Sim = Simulation(blocks, connections, dt=0.02, log=False)
+
+
+    def test_linearize_delinearize(self):
+        """Test linearize and delinearize methods"""
+
+        self.Sim.reset()
+
+        #linearize should not raise
+        self.Sim.linearize()
+
+        #run a few steps with linearized system
+        self.Sim.timestep()
+        self.Sim.timestep()
+
+        #delinearize should not raise
+        self.Sim.delinearize()
+
+        #system should still work after delinearization
+        self.Sim.timestep()
+
+
+    def test_steadystate(self):
+        """Test steady state solving"""
+
+        self.Sim.reset()
+
+        #for dx/dt = -x, steady state is x=0
+        self.Sim.steadystate(reset=True)
+
+        #state should be close to zero (steady state of dx/dt = -x)
+        self.assertAlmostEqual(self.Int.outputs[0], 0.0, 4)
+
+
+    def test_run_adaptive(self):
+        """Test run with adaptive explicit solver"""
+
+        from pathsim.solvers import RKCK54
+
+        self.Sim._set_solver(RKCK54)
+        self.Sim.reset()
+
+        #run with adaptive stepping
+        stats = self.Sim.run(duration=2.0, reset=True, adaptive=True)
+
+        self.assertAlmostEqual(self.Sim.time, 2.0, 2)
+
+        #solution should still decay
+        time, data = self.Sco.read()
+        self.assertTrue(np.all(np.diff(data) < 0.0))
+
+
+    def test_run_adaptive_with_events(self):
+        """Test adaptive solver with scheduled events to cover event estimation"""
+
+        from pathsim.solvers import RKCK54
+
+        self.Sim._set_solver(RKCK54)
+
+        #add schedule event
+        counter = [0]
+        evt = Schedule(t_start=0.5, t_period=0.5, func_act=lambda t: counter[0].__add__(1) or None)
+        self.Sim.add_event(evt)
+
+        self.Sim.run(duration=2.0, reset=True, adaptive=True)
+        self.assertAlmostEqual(self.Sim.time, 2.0, 2)
+
+
+    def test_run_adaptive_implicit(self):
+        """Test run with adaptive implicit solver"""
+
+        from pathsim.solvers import ESDIRK32
+
+        self.Sim._set_solver(ESDIRK32)
+        self.Sim.reset()
+
+        stats = self.Sim.run(duration=2.0, reset=True, adaptive=True)
+        self.assertAlmostEqual(self.Sim.time, 2.0, 2)
+
+
+    def test_run_streaming(self):
+        """Test run_streaming generator"""
+
+        self.Sim.reset()
+
+        results = []
+        for result in self.Sim.run_streaming(
+            duration=1.0,
+            reset=True,
+            tickrate=100,
+            func_callback=lambda: self.Sim.time
+            ):
+            results.append(result)
+
+        #should have yielded at least one result
+        self.assertGreater(len(results), 0)
+
+        #last result should be close to end time
+        self.assertAlmostEqual(self.Sim.time, 1.0, 2)
+
+
+    def test_run_streaming_no_callback(self):
+        """Test run_streaming without callback returns None"""
+
+        self.Sim.reset()
+
+        results = []
+        for result in self.Sim.run_streaming(
+            duration=0.5,
+            reset=True,
+            tickrate=100
+            ):
+            results.append(result)
+
+        #without callback, results should be None
+        for r in results:
+            self.assertIsNone(r)
+
+
+    def test_collect(self):
+        """Test deprecated collect method"""
+
+        self.Sim.run(duration=1.0, reset=True)
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = self.Sim.collect()
+
+        #should have scopes key with data
+        self.assertIn("scopes", result)
+        self.assertIn("spectra", result)
+        self.assertGreater(len(result["scopes"]), 0)
+
+
+    def test_stop_interrupts_run(self):
+        """Test that stop() interrupts an active run"""
+
+        #use schedule event to stop simulation at t=0.5
+        def stop_action(t):
+            self.Sim.stop()
+
+        evt = Schedule(t_start=0.5, t_period=100, func_act=stop_action)
+        self.Sim.add_event(evt)
+        self.Sim.run(duration=5.0, reset=True)
+
+        #simulation should have stopped early
+        self.assertLess(self.Sim.time, 5.0)
+
+
+    def test_deprecated_timestep_methods(self):
+        """Test deprecated timestep methods still work"""
+
+        self.Sim.reset()
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+
+            result = self.Sim.timestep_fixed_explicit(dt=0.01)
+            self.assertEqual(len(result), 5)
+
+            result = self.Sim.timestep_fixed_implicit(dt=0.01)
+            self.assertEqual(len(result), 5)
+
+            result = self.Sim.timestep_adaptive_explicit(dt=0.01)
+            self.assertEqual(len(result), 5)
+
+            result = self.Sim.timestep_adaptive_implicit(dt=0.01)
+            self.assertEqual(len(result), 5)
+
+
+    def test_run_realtime(self):
+        """Test run_realtime generator"""
+
+        self.Sim.reset()
+
+        results = []
+        for result in self.Sim.run_realtime(
+            duration=0.2,
+            reset=True,
+            tickrate=50,
+            speed=100.0,  #run 100x faster than real time
+            func_callback=lambda: self.Sim.time
+            ):
+            results.append(result)
+
+        #should have yielded results
+        self.assertGreater(len(results), 0)
+        self.assertAlmostEqual(self.Sim.time, 0.2, 1)
 
 
 # RUN TESTS LOCALLY ====================================================================

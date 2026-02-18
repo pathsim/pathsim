@@ -13,7 +13,8 @@ import numpy as np
 from pathsim.blocks.dynsys import DynamicalSystem
 
 #base solver for testing
-from pathsim.solvers._solver import Solver 
+from pathsim.solvers._solver import Solver
+from pathsim.solvers.euler import EUF, EUB
 
 from tests.pathsim.blocks._embedding import Embedding
 
@@ -199,7 +200,7 @@ class TestDynamicalSystem(unittest.TestCase):
 
     def test_nonlinear_dynamics(self):
         """Test nonlinear system (Van der Pol oscillator simplified)"""
-        
+
         #dx/dt = x - x^3
         D = DynamicalSystem(
             func_dyn=lambda x, u, t: x - x**3,
@@ -211,6 +212,45 @@ class TestDynamicalSystem(unittest.TestCase):
         #verify dynamics: at x=0.5, dx/dt = 0.5 - 0.125 = 0.375
         result = D.func_dyn(0.5, 0, 0)
         self.assertAlmostEqual(result, 0.375, 8)
+
+
+    def test_solve(self):
+        """Test implicit solve path"""
+
+        D = DynamicalSystem(
+            func_dyn=lambda x, u, t: -2*x + u,
+            func_alg=lambda x, u, t: x,
+            initial_value=1.0,
+            jac_dyn=lambda x, u, t: -2.0
+        )
+        D.set_solver(EUB, None)
+
+        #buffer state before solve
+        D.engine.buffer(0.01)
+
+        D.inputs[0] = 0.5
+        err = D.solve(0, 0.01)
+
+        self.assertIsInstance(err, (int, float, np.floating))
+
+
+    def test_step(self):
+        """Test explicit step path"""
+
+        D = DynamicalSystem(
+            func_dyn=lambda x, u, t: -x,
+            func_alg=lambda x, u, t: x,
+            initial_value=1.0
+        )
+        D.set_solver(EUF, None)
+
+        #buffer state before step
+        D.engine.buffer(0.01)
+
+        D.inputs[0] = 0.0
+        success, error, scale = D.step(0, 0.01)
+
+        self.assertTrue(success)
 
 
 # RUN TESTS LOCALLY ====================================================================
