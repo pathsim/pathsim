@@ -26,14 +26,14 @@ class TestSwitch(unittest.TestCase):
 
         #test default initialization
         S = Switch()
-        self.assertEqual(S.state, None)
+        self.assertEqual(S.switch_state, None)
 
         #test special initialization
         S = Switch(1)
-        self.assertEqual(S.state, 1)
+        self.assertEqual(S.switch_state, 1)
 
-        S = Switch(state=0)
-        self.assertEqual(S.state, 0)
+        S = Switch(switch_state=0)
+        self.assertEqual(S.switch_state, 0)
 
 
     def test_len(self):
@@ -51,23 +51,23 @@ class TestSwitch(unittest.TestCase):
 
         #test the switch state selector
         S = Switch()
-        self.assertEqual(S.state, None)
+        self.assertEqual(S.switch_state, None)
 
         S.select(0)
-        self.assertEqual(S.state, 0)
+        self.assertEqual(S.switch_state, 0)
 
         S.select(1)
-        self.assertEqual(S.state, 1)
-        
+        self.assertEqual(S.switch_state, 1)
+
         S.select(3)
-        self.assertEqual(S.state, 3)
+        self.assertEqual(S.switch_state, 3)
 
 
     def test_update(self):
 
         #test default initialization
         S = Switch()
-        self.assertEqual(S.state, None)
+        self.assertEqual(S.switch_state, None)
 
         S.inputs[0] = 3
         S.update(0)
@@ -77,7 +77,7 @@ class TestSwitch(unittest.TestCase):
 
         #test switch setting
         S = Switch(3)
-        self.assertEqual(S.state, 3)
+        self.assertEqual(S.switch_state, 3)
 
         S.inputs[0] = 3
         S.inputs[1] = 4
