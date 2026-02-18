@@ -309,8 +309,9 @@ class Block:
         self.inputs.reset()
         self.outputs.reset()
 
-        #reset engine if block has solver
-        if self.engine: self.engine.reset()
+        #reset engine if block has solver (updating the initial condition)
+        if self.engine: 
+            self.engine.reset(self.initial_value)
 
         #reset operators if defined
         if self.op_alg: self.op_alg.reset()
