@@ -39,7 +39,7 @@ class Solver:
 
     Parameters
     ----------
-    initial_value : float, array
+    initial_value : float, np.ndarray
         initial condition / integration constant
     tolerance_lte_abs : float
         absolute tolerance for local truncation error (for solvers with error estimate)
@@ -50,9 +50,9 @@ class Solver:
 
     Attributes
     ----------
-    x : numeric, array[numeric]
+    x : float, np.ndarray
         internal 'working' state
-    history : deque[numeric]
+    history : deque[float, np.ndarray]
         internal history of past results
     n : int
         order of integration scheme
@@ -180,7 +180,7 @@ class Solver:
 
         Returns
         -------
-        x : numeric, array[numeric]
+        x : float, np.ndarray
             current internal state of the solver
         """
         return self.x
@@ -194,7 +194,7 @@ class Solver:
 
         Parameters
         ----------
-        x : numeric, array[numeric]
+        x : float, np.ndarray
             new internal state of the solver
 
         """
@@ -208,7 +208,7 @@ class Solver:
 
         Returns
         -------
-        x : numeric, array[numeric]
+        x : float, np.ndarray
             current internal state of the solver
         """
         return self.x
@@ -220,14 +220,25 @@ class Solver:
 
         Parameters
         ----------
-        value : numeric, array[numeric]
+        value : float, np.ndarray
             new internal state of the solver
         """
         self.x = np.atleast_1d(value)
 
 
-    def reset(self):
-        """"Resets integration engine to initial value"""
+    def reset(self, initial_value=None):
+        """"Resets integration engine to initial value, 
+        optionally provides new initial value
+    
+        Parameters
+        ----------
+        initial_value : None | float | np.ndarray
+            new initial value of the engine, optional
+        """
+
+        #update initial value if provided
+        if initial_value is not None:
+            self.initial_value = initial_value
 
         #overwrite state with initial value (ensure array format)
         self.x = np.atleast_1d(self.initial_value).copy()

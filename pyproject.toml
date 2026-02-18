@@ -20,7 +20,7 @@ dependencies = ["numpy>=1.15", "matplotlib>=3.1", "scipy>=1.2"]
 
 [project.optional-dependencies]
 rf = ["scikit-rf"]
-test = ["pytest", "pytest-cov", "codecov", "FMPy", "scikit-rf"]
+test = ["pytest", "pytest-cov", "FMPy", "scikit-rf"]
 fmi = ["FMPy"]
 
 [project.urls]

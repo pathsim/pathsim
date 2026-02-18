@@ -30,23 +30,23 @@ class Switch(Block):
         #change the state of the switch to port 3
         s2.select(3)
     
-    Sets block output depending on `self.state` like this:
+    Sets block output depending on `self.switch_state` like this:
 
     .. code-block::
 
-        state == None -> outputs[0] = 0
+        switch_state == None -> outputs[0] = 0
 
-        state == 0 -> outputs[0] = inputs[0]
+        switch_state == 0 -> outputs[0] = inputs[0]
 
-        state == 1 -> outputs[0] = inputs[1]
+        switch_state == 1 -> outputs[0] = inputs[1]
 
-        state == 2 -> outputs[0] = inputs[2]
+        switch_state == 2 -> outputs[0] = inputs[2]
     
         ...
 
     Parameters
     ----------
-    state : int, None
+    switch_state : int, None
         state of the switch
     
     """
@@ -54,18 +54,18 @@ class Switch(Block):
     input_port_labels = None
     output_port_labels = {"out":0}
 
-    def __init__(self, state=None):
+    def __init__(self, switch_state=None):
         super().__init__()
 
-        self.state = state
+        self.switch_state = switch_state
 
 
     def __len__(self):
-        """Algebraic passthrough only possible if state is defined"""
-        return 0 if (self.state is None or not self._active) else 1
+        """Algebraic passthrough only possible if switch_state is defined"""
+        return 0 if (self.switch_state is None or not self._active) else 1
 
 
-    def select(self, state=0):
+    def select(self, switch_state=0):
         """
         This method is unique to the `Switch` block and intended 
         to be used from outside the simulation level for selecting 
@@ -76,10 +76,10 @@ class Switch(Block):
 
         Parameters
         ---------
-        state : int, None
+        switch_state : int, None
             switch state / input port selection
         """
-        self.state = state
+        self.switch_state = switch_state
 
 
     def update(self, t):
@@ -92,5 +92,5 @@ class Switch(Block):
         """
         
         #early exit without error control
-        if self.state is None: self.outputs[0] = 0.0
-        else: self.outputs[0] = self.inputs[self.state]
+        if self.switch_state is None: self.outputs[0] = 0.0
+        else: self.outputs[0] = self.inputs[self.switch_state]

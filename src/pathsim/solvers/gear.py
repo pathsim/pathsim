@@ -231,8 +231,19 @@ class GEAR(ImplicitSolver):
                 yield _t
 
 
-    def reset(self):
-        """"Resets integration engine to initial state."""
+    def reset(self, initial_value=None):
+        """"Resets integration engine to initial value, 
+        optionally provides new initial value
+    
+        Parameters
+        ----------
+        initial_value : None | float | np.ndarray
+            new initial value of the engine, optional
+        """
+
+        #update initial value if provided
+        if initial_value is not None:
+            self.initial_value = initial_value
 
         #clear buffers
         self.history.clear()
@@ -242,7 +253,7 @@ class GEAR(ImplicitSolver):
         self.x = np.atleast_1d(self.initial_value).copy()
 
         #reset startup solver
-        self.startup.reset()
+        self.startup.reset(initial_value)
 
 
     def buffer(self, dt):
