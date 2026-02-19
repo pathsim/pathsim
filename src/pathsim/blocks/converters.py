@@ -12,10 +12,12 @@ import numpy as np
 from ._block import Block
 from ..utils.register import Register
 from ..events.schedule import Schedule
+from ..utils.mutable import mutable
 
 
 # MIXED SIGNAL BLOCKS ===================================================================
 
+@mutable
 class ADC(Block):
     """Models an ideal Analog-to-Digital Converter (ADC).
 
@@ -104,6 +106,7 @@ class ADC(Block):
         return 0
 
 
+@mutable
 class DAC(Block):
     """Models an ideal Digital-to-Analog Converter (DAC).
 

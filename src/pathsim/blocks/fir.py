@@ -10,13 +10,15 @@
 import numpy as np
 from collections import deque
 
-from ._block import Block    
+from ._block import Block
 from ..utils.register import Register
-from ..events.schedule import Schedule 
+from ..events.schedule import Schedule
+from ..utils.mutable import mutable
 
 
 # FIR FILTER BLOCK ======================================================================
 
+@mutable
 class FIR(Block):
     """Models a discrete-time Finite-Impulse-Response (FIR) filter.
 

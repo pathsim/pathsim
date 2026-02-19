@@ -14,6 +14,7 @@ import numpy as np
 from ._block import Block
 from ..utils.register import Register
 from ..utils.deprecation import deprecated
+from ..utils.mutable import mutable
 from ..events.schedule import Schedule, ScheduleList
 from .._constants import TOLERANCE
 
@@ -169,6 +170,7 @@ class Source(Block):
 
 # SPECIAL CONTINUOUS SOURCE BLOCKS ======================================================
 
+@mutable
 class TriangleWaveSource(Source):
     """Source block that generates an analog triangle wave
         
@@ -214,6 +216,7 @@ class TriangleWaveSource(Source):
         return 2 * abs(t*f - np.floor(t*f + 0.5)) - 1
 
 
+@mutable
 class SinusoidalSource(Source):
     """Source block that generates a sinusoid wave
         
@@ -289,6 +292,7 @@ class GaussianPulseSource(Source):
         return np.exp(-(t/tau)**2)
 
 
+@mutable
 class SinusoidalPhaseNoiseSource(Block):
     """Sinusoidal source with cumulative and white phase noise.
     
@@ -703,6 +707,7 @@ class ChirpSource(ChirpPhaseNoiseSource):
 
 # SPECIAL DISCRETE SOURCE BLOCKS ========================================================
 
+@mutable
 class PulseSource(Block):
     """Generates a periodic pulse waveform with defined rise and fall times.
 
@@ -909,6 +914,7 @@ class Pulse(PulseSource):
     pass
 
 
+@mutable
 class ClockSource(Block):
     """Discrete time clock source block.
     
@@ -970,6 +976,7 @@ class Clock(ClockSource):
 
 
 
+@mutable
 class SquareWaveSource(Block):
     """Discrete time square wave source.
     

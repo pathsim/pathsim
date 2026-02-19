@@ -12,10 +12,12 @@ import numpy as np
 from ._block import Block
 
 from ..utils.adaptivebuffer import AdaptiveBuffer
+from ..utils.mutable import mutable
 
 
 # BLOCKS ================================================================================
 
+@mutable
 class Delay(Block):
     """Delays the input signal by a time constant 'tau' in seconds. 
 

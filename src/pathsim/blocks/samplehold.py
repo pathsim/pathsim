@@ -9,10 +9,12 @@
 
 from ._block import Block
 from ..events.schedule import Schedule
+from ..utils.mutable import mutable
 
 
 # MIXED SIGNAL BLOCKS ===================================================================
 
+@mutable
 class SampleHold(Block):
     """Samples the inputs periodically and produces them at the output.
     

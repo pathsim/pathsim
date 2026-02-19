@@ -15,12 +15,14 @@ from ._block import Block
 
 from ..utils.realtimeplotter import RealtimePlotter
 from ..utils.deprecation import deprecated
+from ..utils.mutable import mutable
 
 from .._constants import COLORS_ALL
 
 
 # BLOCKS FOR DATA RECORDING =============================================================
 
+@mutable
 class Spectrum(Block):
     """Block for fourier spectrum analysis (spectrum analyzer).
 
