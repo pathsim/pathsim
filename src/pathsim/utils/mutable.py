@@ -17,28 +17,79 @@ import functools
 import numpy as np
 
 
+# REINIT HELPER =========================================================================
+
+def _do_reinit(block):
+    """Re-run __init__ with current parameter values, preserving engine state.
+
+    Uses ``type(block).__init__`` to always reinit from the most derived class,
+    ensuring that subclass overrides (e.g. operator replacements) are preserved.
+
+    Parameters
+    ----------
+    block : Block
+        the block instance to reinitialize
+    """
+
+    actual_cls = type(block)
+
+    # gather current values for ALL init params of the actual class
+    sig = inspect.signature(actual_cls.__init__)
+    kwargs = {}
+    for name in sig.parameters:
+        if name == "self":
+            continue
+        if hasattr(block, name):
+            kwargs[name] = getattr(block, name)
+
+    # save engine
+    engine = block.engine if hasattr(block, 'engine') else None
+
+    # re-run init through the wrapped __init__ (handles depth counting)
+    block._param_locked = False
+    actual_cls.__init__(block, **kwargs)
+    # _param_locked is set to True by the outermost new_init wrapper
+
+    # restore engine
+    if engine is not None:
+        old_dim = len(engine)
+        new_dim = len(np.atleast_1d(block.initial_value)) if hasattr(block, 'initial_value') else 0
+
+        if old_dim == new_dim:
+            # same dimension - restore the entire engine
+            block.engine = engine
+        else:
+            # dimension changed - create new engine inheriting settings
+            block.engine = type(engine).create(
+                block.initial_value,
+                parent=engine.parent,
+            )
+            block.engine.tolerance_lte_abs = engine.tolerance_lte_abs
+            block.engine.tolerance_lte_rel = engine.tolerance_lte_rel
+
+
 # DECORATOR =============================================================================
 
-def mutable(*params):
-    """Class decorator that makes listed parameters trigger automatic reinitialization.
+def mutable(cls):
+    """Class decorator that makes all ``__init__`` parameters trigger automatic
+    reinitialization when changed at runtime.
 
-    When a parameter declared as mutable is changed at runtime, the block's ``__init__``
-    is re-executed with the updated parameter values. The integration engine state is
-    preserved across the reinitialization, ensuring continuity during simulation.
+    Parameters are auto-detected from the ``__init__`` signature. When any parameter
+    is changed at runtime, the block's ``__init__`` is re-executed with updated values.
+    The integration engine state is preserved across reinitialization.
 
     A ``set(**kwargs)`` method is also generated for batched parameter updates that
     triggers only a single reinitialization.
 
-    Parameters
-    ----------
-    params : str
-        names of the mutable parameters (must match ``__init__`` argument names)
+    Supports inheritance: if both a parent and child class use ``@mutable``, the init
+    guard uses a depth counter to ensure reinitialization only triggers after the
+    outermost ``__init__`` completes.
 
     Example
     -------
     .. code-block:: python
 
-        @mutable("K", "T")
+        @mutable
         class PT1(StateSpace):
             def __init__(self, K=1.0, T=1.0):
                 self.K = K
@@ -55,117 +106,72 @@ def mutable(*params):
         pt1.set(K=5.0, T=0.3)         # single reinitialization
     """
 
-    def decorator(cls):
+    original_init = cls.__init__
 
-        original_init = cls.__init__
+    # auto-detect all __init__ parameters
+    params = [
+        name for name in inspect.signature(original_init).parameters
+        if name != "self"
+        ]
 
-        # get all __init__ parameter names for reinit
-        init_params = [
-            name for name in inspect.signature(original_init).parameters
-            if name != "self"
-            ]
+    # -- install property descriptors for all params -------------------------------
 
-        # validate that declared mutable params exist in __init__
-        for p in params:
-            if p not in init_params:
-                raise ValueError(
-                    f"Mutable parameter '{p}' not found in "
-                    f"{cls.__name__}.__init__ signature {init_params}"
-                    )
+    for name in params:
+        storage = f"_p_{name}"
 
-        # -- install property descriptors for mutable params ---------------------------
+        def _make_property(s):
+            def getter(self):
+                return getattr(self, s)
 
-        for name in params:
-            storage = f"_p_{name}"
+            def setter(self, value):
+                setattr(self, s, value)
+                if getattr(self, '_param_locked', False):
+                    _do_reinit(self)
 
-            def _make_property(s):
-                def getter(self):
-                    return getattr(self, s)
+            return property(getter, setter)
 
-                def setter(self, value):
-                    setattr(self, s, value)
-                    if getattr(self, '_param_locked', False):
-                        _reinit(self)
+        setattr(cls, name, _make_property(storage))
 
-                return property(getter, setter)
+    # -- wrap __init__ with depth counter ------------------------------------------
 
-            setattr(cls, name, _make_property(storage))
-
-        # -- reinit function -----------------------------------------------------------
-
-        def _reinit(self):
-            """Re-run __init__ with current parameter values, preserving engine state."""
-
-            # gather current values for all init params
-            kwargs = {}
-            for name in init_params:
-                if hasattr(self, name):
-                    kwargs[name] = getattr(self, name)
-
-            # save engine state
-            engine = self.engine if hasattr(self, 'engine') else None
-
-            # re-run init (unlock to prevent recursive reinit)
-            self._param_locked = False
-            original_init(self, **kwargs)
-            self._param_locked = True
-
-            # restore engine
-            if engine is not None:
-                old_dim = len(engine)
-                new_dim = len(np.atleast_1d(self.initial_value)) if hasattr(self, 'initial_value') else 0
-
-                if old_dim == new_dim:
-                    # same dimension - restore the engine directly
-                    self.engine = engine
-                else:
-                    # dimension changed - create new engine inheriting settings
-                    self.engine = type(engine).create(
-                        self.initial_value,
-                        parent=engine.parent,
-                        from_engine=None
-                        )
-                    # inherit tolerances manually since from_engine=None
-                    self.engine.tolerance_lte_abs = engine.tolerance_lte_abs
-                    self.engine.tolerance_lte_rel = engine.tolerance_lte_rel
-
-        # -- wrap __init__ to flip the lock after construction -------------------------
-
-        @functools.wraps(original_init)
-        def new_init(self, *args, **kwargs):
+    @functools.wraps(original_init)
+    def new_init(self, *args, **kwargs):
+        self._init_depth = getattr(self, '_init_depth', 0) + 1
+        try:
             original_init(self, *args, **kwargs)
-            self._param_locked = True
+        finally:
+            self._init_depth -= 1
+            if self._init_depth == 0:
+                self._param_locked = True
 
-        cls.__init__ = new_init
+    cls.__init__ = new_init
 
-        # -- generate batched set() method ---------------------------------------------
+    # -- generate batched set() method ---------------------------------------------
 
-        def set(self, **kwargs):
-            """Set multiple parameters and reinitialize once.
+    def set(self, **kwargs):
+        """Set multiple parameters and reinitialize once.
 
-            Parameters
-            ----------
-            kwargs : dict
-                parameter names and their new values
+        Parameters
+        ----------
+        kwargs : dict
+            parameter names and their new values
 
-            Example
-            -------
-            .. code-block:: python
+        Example
+        -------
+        .. code-block:: python
 
-                block.set(K=5.0, T=0.3)
-            """
-            self._param_locked = False
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-            self._param_locked = True
-            _reinit(self)
+            block.set(K=5.0, T=0.3)
+        """
+        self._param_locked = False
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        _do_reinit(self)
 
-        cls.set = set
+    cls.set = set
 
-        # -- store metadata for introspection ------------------------------------------
+    # -- store metadata for introspection ------------------------------------------
 
-        cls._mutable_params = params
+    existing = getattr(cls, '_mutable_params', ())
+    cls._mutable_params = existing + tuple(p for p in params if p not in existing)
 
-        return cls
-
-    return decorator
+    return cls

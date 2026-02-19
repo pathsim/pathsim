@@ -14,10 +14,12 @@ from math import factorial
 
 from .lti import StateSpace
 from ..utils.register import Register
+from ..utils.mutable import mutable
 
 
 # FILTER BLOCKS =========================================================================
 
+@mutable
 class ButterworthLowpassFilter(StateSpace):
     """Direct implementation of a low pass butterworth filter block.
 
@@ -52,6 +54,7 @@ class ButterworthLowpassFilter(StateSpace):
         super().__init__(omega_c*A, omega_c*B, C, D)
 
 
+@mutable
 class ButterworthHighpassFilter(StateSpace):
     """Direct implementation of a high pass butterworth filter block.
 
@@ -85,6 +88,7 @@ class ButterworthHighpassFilter(StateSpace):
         super().__init__(omega_c*A, omega_c*B, C, D)
 
 
+@mutable
 class ButterworthBandpassFilter(StateSpace):
     """Direct implementation of a bandpass butterworth filter block.
 
@@ -119,6 +123,7 @@ class ButterworthBandpassFilter(StateSpace):
         super().__init__(*tf2ss(num, den))
 
 
+@mutable
 class ButterworthBandstopFilter(StateSpace):
     """Direct implementation of a bandstop butterworth filter block.
 
@@ -153,6 +158,7 @@ class ButterworthBandstopFilter(StateSpace):
         super().__init__(*tf2ss(num, den))
 
 
+@mutable
 class AllpassFilter(StateSpace):
     """Direct implementation of a first order allpass filter, or a cascade 
     of n 1st order allpass filters

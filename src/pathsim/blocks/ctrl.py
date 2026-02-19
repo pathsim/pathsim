@@ -14,10 +14,12 @@ from .lti import StateSpace
 from .dynsys import DynamicalSystem
 
 from ..optim.operator import Operator, DynamicOperator
+from ..utils.mutable import mutable
 
 
 # LTI CONTROL BLOCKS (StateSpace subclasses) ============================================
 
+@mutable
 class PT1(StateSpace):
     """First-order lag element (PT1).
 
@@ -65,6 +67,7 @@ class PT1(StateSpace):
             )
 
 
+@mutable
 class PT2(StateSpace):
     """Second-order lag element (PT2).
 
@@ -124,6 +127,7 @@ class PT2(StateSpace):
             )
 
 
+@mutable
 class LeadLag(StateSpace):
     """Lead-Lag compensator.
 
@@ -180,6 +184,7 @@ class LeadLag(StateSpace):
             )
 
 
+@mutable
 class PID(StateSpace):
     """Proportional-Integral-Differentiation (PID) controller.
 
@@ -253,6 +258,7 @@ class PID(StateSpace):
             )
 
 
+@mutable
 class AntiWindupPID(PID):
     """Proportional-Integral-Differentiation (PID) controller with anti-windup mechanism (back-calculation).
 

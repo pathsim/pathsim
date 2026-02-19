@@ -22,6 +22,7 @@ from ..utils.gilbert import gilbert_realization
 from ..utils.deprecation import deprecated
 
 from ..optim.operator import DynamicOperator
+from ..utils.mutable import mutable
 
 
 # LTI BLOCKS ============================================================================
@@ -169,6 +170,7 @@ class StateSpace(Block):
         return self.engine.step(f, dt)
 
 
+@mutable
 class TransferFunctionPRC(StateSpace):
     """This block defines a LTI (MIMO for pole residue) transfer function.
 
@@ -227,6 +229,7 @@ class TransferFunction(TransferFunctionPRC):
     pass
 
 
+@mutable
 class TransferFunctionZPG(StateSpace):
     """This block defines a LTI (SISO) transfer function.
 
@@ -281,6 +284,7 @@ class TransferFunctionZPG(StateSpace):
         super().__init__(sp_SS.A, sp_SS.B, sp_SS.C, sp_SS.D)
 
 
+@mutable
 class TransferFunctionNumDen(StateSpace):
     """This block defines a LTI (SISO) transfer function.
 
