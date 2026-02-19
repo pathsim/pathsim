@@ -124,21 +124,3 @@ class Integrator(Block):
         """
         f = self.inputs.to_array()
         return self.engine.step(f, dt)
-    
-    
-    def reset(self):
-        """Reset block and initialize solver state from ``initial_value``.
-
-        Notes
-        -----
-        The integration engine's ``state`` array is the actual simulation
-        variable.  Simply setting ``self.initial_value`` (e.g. via a
-        :class:`Parameter`) does **not** propagate to the engine — that
-        only happens here, during reset.  This is called automatically by
-        ``Simulation.reset()`` before every run.
-        """
-        super().reset()
-        eng = getattr(self, "engine", None)
-        state = getattr(eng, "state", None) if eng is not None else None
-        if state is not None:
-            state[...] = float(self.initial_value)
