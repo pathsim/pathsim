@@ -381,6 +381,11 @@ class Subsystem(Block):
         """Assemble internal graph of subsystem for fast
         algebraic evaluation during simulation.
         """
+
+        #reset all block inputs to clear stale values from removed connections
+        for block in self.blocks:
+            block.inputs.reset()
+
         self.graph = Graph({*self.blocks, self.interface}, self.connections)
         self._graph_dirty = False
 
