@@ -28,3 +28,4 @@ from .rng import *
 from .fir import *
 from .fmu import *
 from .rf import *
+from .timeseries_source import *

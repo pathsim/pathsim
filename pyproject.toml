@@ -35,3 +35,8 @@ markers = [
 
 [tool.setuptools_scm]
 write_to = "src/pathsim/_version.py"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
