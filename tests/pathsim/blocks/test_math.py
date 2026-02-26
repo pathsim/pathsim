@@ -579,15 +579,15 @@ class TestAtan2(unittest.TestCase):
             self.assertAlmostEqual(B.outputs[0], expected)
 
 
-class TestMapLin(unittest.TestCase):
+class TestRescale(unittest.TestCase):
     """
-    Test the implementation of the 'MapLin' block class
+    Test the implementation of the 'Rescale' block class
     """
 
     def test_default_identity(self):
         """test default mapping [0,1] -> [0,1] is identity"""
 
-        B = MapLin()
+        B = Rescale()
 
         def src(t): return t * 0.1
         def ref(t): return t * 0.1
@@ -598,7 +598,7 @@ class TestMapLin(unittest.TestCase):
     def test_custom_mapping(self):
         """test custom linear mapping"""
 
-        B = MapLin(i0=0.0, i1=10.0, o0=0.0, o1=100.0)
+        B = Rescale(i0=0.0, i1=10.0, o0=0.0, o1=100.0)
 
         def src(t): return float(t)
         def ref(t): return float(t) * 10.0
@@ -609,7 +609,7 @@ class TestMapLin(unittest.TestCase):
     def test_saturate(self):
         """test saturation clamping"""
 
-        B = MapLin(i0=0.0, i1=1.0, o0=0.0, o1=10.0, saturate=True)
+        B = Rescale(i0=0.0, i1=1.0, o0=0.0, o1=10.0, saturate=True)
 
         #input beyond range
         B.inputs[0] = 2.0
@@ -624,7 +624,7 @@ class TestMapLin(unittest.TestCase):
     def test_no_saturate(self):
         """test that without saturation, output can exceed range"""
 
-        B = MapLin(i0=0.0, i1=1.0, o0=0.0, o1=10.0, saturate=False)
+        B = Rescale(i0=0.0, i1=1.0, o0=0.0, o1=10.0, saturate=False)
 
         B.inputs[0] = 2.0
         B.update(0)
@@ -633,7 +633,7 @@ class TestMapLin(unittest.TestCase):
     def test_vector_input(self):
         """test with vector inputs"""
 
-        B = MapLin(i0=0.0, i1=10.0, o0=-1.0, o1=1.0)
+        B = Rescale(i0=0.0, i1=10.0, o0=-1.0, o1=1.0)
 
         def src(t): return float(t), float(t) * 2
         def ref(t): return -1.0 + float(t) * 0.2, -1.0 + float(t) * 2 * 0.2

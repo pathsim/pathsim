@@ -15,6 +15,7 @@ from ._block import Block
 
 from ..utils.register import Register
 from ..optim.operator import Operator
+from ..utils.mutable import mutable
 
 
 # BASE MATH BLOCK =======================================================================
@@ -635,8 +636,9 @@ class Atan2(Block):
         self.outputs.update_from_array(y)
 
 
-class MapLin(Math):
-    """Linear mapping / interpolation block.
+@mutable
+class Rescale(Math):
+    """Linear rescaling / mapping block.
 
     Maps the input linearly from range ``[i0, i1]`` to range ``[o0, o1]``.
     Optionally saturates the output to ``[o0, o1]``.
