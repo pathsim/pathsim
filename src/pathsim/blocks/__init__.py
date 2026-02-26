@@ -21,6 +21,7 @@ from .delay import *
 from .noise import *
 from .table import *
 from .relay import *
+from .logic import *
 from .math import *
 from .ctrl import *
 from .lti import *

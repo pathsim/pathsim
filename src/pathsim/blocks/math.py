@@ -15,6 +15,7 @@ from ._block import Block
 
 from ..utils.register import Register
 from ..optim.operator import Operator
+from ..utils.mutable import mutable
 
 
 # BASE MATH BLOCK =======================================================================
@@ -574,4 +575,154 @@ class Matrix(Math):
         self.op_alg = Operator(
             func=lambda u: np.dot(self.A, u),
             jac=lambda u: self.A
+            )
+
+
+class Atan2(Block):
+    """Two-argument arctangent block.
+
+    Computes the four-quadrant arctangent of two inputs:
+
+    .. math::
+
+        y = \\mathrm{atan2}(a, b)
+
+    Note
+    ----
+    This block takes exactly two inputs (a, b) and produces one output.
+    The first input is the y-coordinate, the second is the x-coordinate,
+    matching the convention of ``numpy.arctan2(y, x)``.
+
+    Attributes
+    ----------
+    op_alg : Operator
+        internal algebraic operator
+    """
+
+    input_port_labels = {"a":0, "b":1}
+    output_port_labels = {"y":0}
+
+    def __init__(self):
+        super().__init__()
+
+        def _atan2_jac(x):
+            a, b = x[0], x[1]
+            denom = a**2 + b**2
+            if denom == 0:
+                return np.zeros((1, 2))
+            return np.array([[b / denom, -a / denom]])
+
+        self.op_alg = Operator(
+            func=lambda x: np.arctan2(x[0], x[1]),
+            jac=_atan2_jac
+            )
+
+
+    def __len__(self):
+        """Purely algebraic block"""
+        return 1
+
+
+    def update(self, t):
+        """update algebraic component of system equation
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        """
+        u = self.inputs.to_array()
+        y = self.op_alg(u)
+        self.outputs.update_from_array(y)
+
+
+@mutable
+class Rescale(Math):
+    """Linear rescaling / mapping block.
+
+    Maps the input linearly from range ``[i0, i1]`` to range ``[o0, o1]``.
+    Optionally saturates the output to ``[o0, o1]``.
+
+    .. math::
+
+        y = o_0 + \\frac{(x - i_0) \\cdot (o_1 - o_0)}{i_1 - i_0}
+
+    This block supports vector inputs.
+
+    Parameters
+    ----------
+    i0 : float
+        input range lower bound
+    i1 : float
+        input range upper bound
+    o0 : float
+        output range lower bound
+    o1 : float
+        output range upper bound
+    saturate : bool
+        if True, clamp output to [min(o0,o1), max(o0,o1)]
+
+    Attributes
+    ----------
+    op_alg : Operator
+        internal algebraic operator
+    """
+
+    def __init__(self, i0=0.0, i1=1.0, o0=0.0, o1=1.0, saturate=False):
+        super().__init__()
+
+        self.i0 = i0
+        self.i1 = i1
+        self.o0 = o0
+        self.o1 = o1
+        self.saturate = saturate
+
+        #precompute gain
+        self._gain = (o1 - o0) / (i1 - i0)
+
+        def _maplin(x):
+            y = self.o0 + (x - self.i0) * self._gain
+            if self.saturate:
+                lo, hi = min(self.o0, self.o1), max(self.o0, self.o1)
+                y = np.clip(y, lo, hi)
+            return y
+
+        def _maplin_jac(x):
+            if self.saturate:
+                lo, hi = min(self.o0, self.o1), max(self.o0, self.o1)
+                y = self.o0 + (x - self.i0) * self._gain
+                mask = (y >= lo) & (y <= hi)
+                return np.diag(mask.astype(float) * self._gain)
+            return np.diag(np.full_like(x, self._gain))
+
+        self.op_alg = Operator(
+            func=_maplin,
+            jac=_maplin_jac
+            )
+
+
+class Alias(Math):
+    """Signal alias / pass-through block.
+
+    Passes the input directly to the output without modification.
+    This is useful for signal renaming in model composition.
+
+    .. math::
+
+        y = x
+
+    This block supports vector inputs.
+
+    Attributes
+    ----------
+    op_alg : Operator
+        internal algebraic operator
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        self.op_alg = Operator(
+            func=lambda x: x,
+            jac=lambda x: np.eye(len(x))
             )

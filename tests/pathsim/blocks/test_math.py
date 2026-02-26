@@ -544,6 +544,132 @@ class TestMatrix(unittest.TestCase):
 
 
 
+class TestAtan2(unittest.TestCase):
+    """
+    Test the implementation of the 'Atan2' block class
+    """
+
+    def test_embedding(self):
+        """test algebraic components via embedding"""
+
+        B = Atan2()
+
+        def src(t): return np.sin(t + 0.1), np.cos(t + 0.1)
+        def ref(t): return np.arctan2(np.sin(t + 0.1), np.cos(t + 0.1))
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+    def test_quadrants(self):
+        """test all four quadrants"""
+
+        B = Atan2()
+
+        cases = [
+            ( 1.0,  1.0, np.arctan2(1.0, 1.0)),
+            ( 1.0, -1.0, np.arctan2(1.0, -1.0)),
+            (-1.0, -1.0, np.arctan2(-1.0, -1.0)),
+            (-1.0,  1.0, np.arctan2(-1.0, 1.0)),
+        ]
+
+        for a, b, expected in cases:
+            B.inputs[0] = a
+            B.inputs[1] = b
+            B.update(0)
+            self.assertAlmostEqual(B.outputs[0], expected)
+
+
+class TestRescale(unittest.TestCase):
+    """
+    Test the implementation of the 'Rescale' block class
+    """
+
+    def test_default_identity(self):
+        """test default mapping [0,1] -> [0,1] is identity"""
+
+        B = Rescale()
+
+        def src(t): return t * 0.1
+        def ref(t): return t * 0.1
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertEqual(*E.check_SISO(t))
+
+    def test_custom_mapping(self):
+        """test custom linear mapping"""
+
+        B = Rescale(i0=0.0, i1=10.0, o0=0.0, o1=100.0)
+
+        def src(t): return float(t)
+        def ref(t): return float(t) * 10.0
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertAlmostEqual(*E.check_SISO(t))
+
+    def test_saturate(self):
+        """test saturation clamping"""
+
+        B = Rescale(i0=0.0, i1=1.0, o0=0.0, o1=10.0, saturate=True)
+
+        #input beyond range
+        B.inputs[0] = 2.0
+        B.update(0)
+        self.assertEqual(B.outputs[0], 10.0)
+
+        #input below range
+        B.inputs[0] = -1.0
+        B.update(0)
+        self.assertEqual(B.outputs[0], 0.0)
+
+    def test_no_saturate(self):
+        """test that without saturation, output can exceed range"""
+
+        B = Rescale(i0=0.0, i1=1.0, o0=0.0, o1=10.0, saturate=False)
+
+        B.inputs[0] = 2.0
+        B.update(0)
+        self.assertEqual(B.outputs[0], 20.0)
+
+    def test_vector_input(self):
+        """test with vector inputs"""
+
+        B = Rescale(i0=0.0, i1=10.0, o0=-1.0, o1=1.0)
+
+        def src(t): return float(t), float(t) * 2
+        def ref(t): return -1.0 + float(t) * 0.2, -1.0 + float(t) * 2 * 0.2
+        E = Embedding(B, src, ref)
+
+        for t in range(5): self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+
+class TestAlias(unittest.TestCase):
+    """
+    Test the implementation of the 'Alias' block class
+    """
+
+    def test_passthrough_siso(self):
+        """test that input passes through unchanged"""
+
+        B = Alias()
+
+        def src(t): return float(t)
+        def ref(t): return float(t)
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertEqual(*E.check_SISO(t))
+
+    def test_passthrough_mimo(self):
+        """test that vector input passes through unchanged"""
+
+        B = Alias()
+
+        def src(t): return float(t), float(t) * 2
+        def ref(t): return float(t), float(t) * 2
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+
 # RUN TESTS LOCALLY ====================================================================
 if __name__ == '__main__':
     unittest.main(verbosity=2)
