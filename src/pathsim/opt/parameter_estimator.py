@@ -1786,6 +1786,17 @@ class ParameterEstimator:
                 "Use fit() for single-experiment problems."
             )
 
+        _OUTER_CONSTRAINT_METHODS = {"SLSQP", "trust-constr", "COBYLA"}
+        if (
+            outer_constraints is not None
+            and outer_method != "least_squares"
+            and outer_method not in _OUTER_CONSTRAINT_METHODS
+        ):
+            raise ValueError(
+                f"outer_method='{outer_method}' does not support constraints. "
+                "Supported constraint methods: 'SLSQP', 'trust-constr', 'COBYLA'."
+            )
+
         has_locals = any(len(lp) > 0 for lp in self.local_parameters)
         if not has_locals:
             x0_list = (
@@ -1939,7 +1950,7 @@ class ParameterEstimator:
                 max_nfev=max_outer_nfev,
                 verbose=max(0, verbose - 1),
             )
-            x_G_opt     = outer_res.x
+            x_G_opt       = outer_res.x
             outer_cost    = float(outer_res.cost)
             outer_nfev    = int(outer_res.nfev)
             outer_success = bool(outer_res.success)
