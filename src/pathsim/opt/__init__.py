@@ -3,7 +3,7 @@
 ##                   PARAMETER ESTIMATION TOOLKIT — PUBLIC API
 ##                               (opt/__init__.py)
 ##
-##                                  Kevin McBride 2026
+##                              Kevin McBride 2026
 ##
 #########################################################################################
 

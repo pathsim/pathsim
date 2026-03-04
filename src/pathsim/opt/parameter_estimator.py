@@ -34,7 +34,8 @@ _UNSET = object()
 # captures `self` (e.g. `lambda x: x * self.gain` in Amplifier) still refers
 # to the ORIGINAL block after the copy.  The helpers below fix this by walking
 # all block operators after deepcopy and rebuilding any function whose closure
-# contains an original-block reference.
+# contains an original-block reference. Since PathSim frequently uses lambda
+# functions, this is necessary to avoid issues with parameter fitting.
 
 def _make_cell(value):
     """Return a new closure cell containing *value*."""
@@ -140,7 +141,8 @@ class Parameter:
     A parameter is either free (used directly in model code) or block-bound
     (mapped to a PathSim block attribute). Optional transforms allow the
     optimizer to work in an unconstrained space while applying a physically
-    meaningful value to the model (e.g. ``np.exp`` to enforce positivity).
+    meaningful value to the model (e.g. ``np.exp`` to enforce positivity). It
+    also helps with scaling issues.
 
     Parameters
     ----------
@@ -433,7 +435,7 @@ class ScopeSignal:
     occurrence: int | None = None
 
 
-    def _extract(self, t: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _extract(self, t: np.ndarray, y: np.ndarray) -> TimeSeriesData:
         """Extract the selected port from raw scope output arrays.
 
         Parameters
@@ -443,12 +445,17 @@ class ScopeSignal:
         y : array_like
             Output array, shape ``(n_time,)`` or ``(n_ports, n_time)``.
             If unambiguously ``(n_time, n_ports)`` (time-first), it is transposed.
+
+        Returns
+        -------
+        TimeSeriesData
+            Extracted time series data for the selected port.
         """
         t_arr = np.asarray(t, dtype=float).reshape(-1)
         y_arr = np.asarray(y, dtype=float)
 
         if y_arr.ndim == 1:
-            return t_arr, y_arr.reshape(-1)
+            return TimeSeriesData(time=t_arr, data=y_arr.reshape(-1))
 
         if y_arr.ndim == 2:
             n_rows, n_cols = y_arr.shape
@@ -471,13 +478,19 @@ class ScopeSignal:
                     f"ScopeSignal port={self.port} out of range; "
                     f"scope output has {n_ports} port(s)"
                 )
-            return t_arr, y_arr[self.port, :].reshape(-1)
+            return TimeSeriesData(time=t_arr, data=y_arr[self.port, :].reshape(-1))
 
         raise ValueError("ScopeSignal supports 1D or 2D scope data only")
 
 
-    def read(self) -> tuple[np.ndarray, np.ndarray]:
-        """Read ``(t, y)`` from the scope and extract the selected port."""
+    def read(self) -> TimeSeriesData:
+        """Read time series data from the scope and extract the selected port.
+
+        Returns
+        -------
+        TimeSeriesData
+            Extracted time series data for this signal's selected port.
+        """
         if self.scope is None:
             raise ValueError(
                 "ScopeSignal.scope is None; it must be resolved before reading"
@@ -1461,7 +1474,8 @@ class ParameterEstimator:
                 f"output_idx {output_idx} out of range for experiment {experiment}"
             )
 
-        return self._resolve_output(exp, exp.outputs[output_idx]).read()
+        ts_data = self._resolve_output(exp, exp.outputs[output_idx]).read()
+        return ts_data.time, ts_data.data
 
 
     def residuals(self, x: np.ndarray) -> np.ndarray:
@@ -1511,10 +1525,10 @@ class ParameterEstimator:
 
             for i, meas in enumerate(exp.measurements):
                 out = self._resolve_output(exp, exp.outputs[i])
-                t_out, y_out = out.read()
+                ts_data = out.read()
 
-                t_out = np.asarray(t_out, dtype=float).reshape(-1)
-                y_out = np.asarray(y_out, dtype=float).reshape(-1)
+                t_out = np.asarray(ts_data.time, dtype=float).reshape(-1)
+                y_out = np.asarray(ts_data.data, dtype=float).reshape(-1)
 
                 y_pred = np.interp(meas.time, t_out, y_out)
                 meas_data = np.asarray(meas.data, dtype=float).reshape(-1)
@@ -1840,11 +1854,11 @@ class ParameterEstimator:
             parts: list[np.ndarray] = []
             for k, meas in enumerate(exp.measurements):
                 out    = self._resolve_output(exp, exp.outputs[k])
-                t_o, y_o = out.read()
+                ts_data = out.read()
                 y_pred = np.interp(
                     meas.time,
-                    np.asarray(t_o, dtype=float),
-                    np.asarray(y_o, dtype=float),
+                    np.asarray(ts_data.time, dtype=float),
+                    np.asarray(ts_data.data, dtype=float),
                 )
                 sig = exp.sigma[k] if exp.sigma[k] is not None else 1.0
                 parts.append(
@@ -2326,12 +2340,12 @@ class ParameterEstimator:
                     n_out = len(exp.outputs)
                     for j, out_sig in enumerate(exp.outputs):
                         resolved = self._resolve_output(exp, out_sig)
-                        t_pred, y_pred = resolved.read()
+                        ts_pred = resolved.read()
                         if overlay:
                             label = f"fit{j} (exp{exp_idx})" if n_out > 1 else f"fit (exp{exp_idx})"
                         else:
                             label = f"fit{j}" if n_out > 1 else "fit"
-                        ax.plot(t_pred, y_pred, pred_style, lw=2, label=label)
+                        ax.plot(ts_pred.time, ts_pred.data, pred_style, lw=2, label=label)
                 except Exception as e:
                     ax.text(
                         0.01, 0.99,

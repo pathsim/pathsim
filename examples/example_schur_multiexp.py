@@ -1,6 +1,6 @@
 #########################################################################################
 ##
-##  PathSim example: multi-experiment nested Schur optimisation
+##  PathSim example: multi-experiment nested Schur optimization
 ##
 ##  Model:   First-order decay with per-experiment amplitude
 ##
@@ -19,10 +19,9 @@
 ##      amp_i  [ ]    output amplitude — Amplifier gain, via add_local_block_parameter
 ##
 ##
-##  Part 1 — Default outer optimizer (trust-region reflective)
-##  ----------------------------------------------------------
-##  fit_nested() uses scipy.optimize.least_squares as the outer optimizer by
-##  default, which internally runs the trust-region reflective (TRF) algorithm.
+##  Part 1 — Default path: least_squares on reduced residual (outer problem)
+##  ------------------------------------------------------------------------
+##  fit_nested() uses scipy.optimize.least_squares as the outer optimizer.
 ##  It operates directly on the reduced residual vector:
 ##
 ##      Outer:  min_{k}   ½‖r_red(k)‖²     via TRF  (supports robust loss)
@@ -101,13 +100,16 @@ ode     = ODE(
 amp_out = Amplifier(gain=1.0)
 scope   = Scope(labels=["y(t)"])
 
-sim = Simulation(
-    [k_const, ode, amp_out, scope],
-    [
+blocks = [k_const, ode, amp_out, scope]
+connections =  [
         Connection(k_const[0], ode[0]),
         Connection(ode[0],     amp_out[0]),
         Connection(amp_out[0], scope[0]),
-    ],
+    ]
+
+sim = Simulation(
+    blocks=blocks,
+    connections=connections,
     Solver=SSPRK22,
     dt=0.05, dt_min=1e-12,
     tolerance_lte_rel=1e-5,
@@ -267,6 +269,8 @@ if __name__ == '__main__':
     #   fun(x) = x[0] - ln(2)/2  encodes  k >= ln(2)/2
 
     K_MIN = np.log(2) / 2.0   # ~0.347  (half-life <= 2 s)
+    # Try this with a tighter constraint (e.g. K_MIN = 0.39) to see the 
+    # effect of an active constraint that distorts the solution.
 
     half_life_constraint = {
         "type": "ineq",

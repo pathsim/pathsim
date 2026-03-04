@@ -111,9 +111,8 @@ ode = ODE(
 T_scaler = Amplifier(gain=1/100)    # T/100 so it fits same axis as concentrations
 scope    = Scope(labels=["Ca", "Cb", "Cc", "T/100"])
 
-sim = Simulation(
-    [Ca_in_src, T_in_src, ode, T_scaler, scope],
-    [
+blocks = [Ca_in_src, T_in_src, ode, T_scaler, scope]
+connections = [
         Connection(Ca_in_src[0], ode[0]),
         Connection(T_in_src[0],  ode[1]),
         Connection(ode[0], scope[0]),
@@ -121,7 +120,11 @@ sim = Simulation(
         Connection(ode[2], scope[2]),
         Connection(ode[3], T_scaler[0]),
         Connection(T_scaler[0], scope[3]),
-    ],
+    ]
+
+sim = Simulation(
+    blocks=blocks,
+    connections=connections,
     Solver=SSPRK22,
     dt=0.01,
     dt_min=1e-16,

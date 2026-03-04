@@ -252,7 +252,9 @@ class TestScopeSignal:
     def test_read_1d(self):
         scope = _DummyScope(t=np.array([0, 1, 2]), y=np.array([10, 20, 30]))
         sig = ScopeSignal(scope=scope, port=0)
-        t, y = sig.read()
+        sig_data = sig.read()
+        t = sig_data.time
+        y = sig_data.data
         np.testing.assert_array_equal(t, [0, 1, 2])
         np.testing.assert_array_equal(y, [10, 20, 30])
 
@@ -263,7 +265,9 @@ class TestScopeSignal:
             y=np.array([[10, 20, 30], [40, 50, 60]]),
         )
         sig = ScopeSignal(scope=scope, port=1)
-        t, y = sig.read()
+        sig_data = sig.read()
+        t = sig_data.time
+        y = sig_data.data
         np.testing.assert_array_equal(y, [40, 50, 60])
 
     def test_read_2d_time_first_layout(self):
@@ -273,7 +277,9 @@ class TestScopeSignal:
             y=np.array([[10, 40], [20, 50], [30, 60]]),  # shape (3, 2)
         )
         sig = ScopeSignal(scope=scope, port=1)
-        t, y = sig.read()
+        sig_data = sig.read()
+        t = sig_data.time
+        y = sig_data.data
         np.testing.assert_array_equal(y, [40, 50, 60])
 
     def test_read_none_scope_raises(self):
@@ -1226,7 +1232,8 @@ class TestScopeSignalExtractRobustness:
         y = np.array([[10.0, 1.0], [20.0, 2.0], [30.0, 3.0]])  # (3, 2) time-first
         scope = _DummyScope(t=t, y=y)
         sig = ScopeSignal(scope=scope, port=0)
-        _, y_out = sig.read()
+        sig_data = sig.read()
+        y_out = sig_data.data
         np.testing.assert_array_equal(y_out, [10.0, 20.0, 30.0])
 
 

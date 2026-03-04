@@ -22,6 +22,8 @@
 ##   - ka is the least precise             (only the rise phase pins it down)
 ##   - ka and ke carry moderate correlation (adjusting one shifts the peak)
 ##
+##  This example shows how sensitivity analysis can be done in PathSim.
+##
 #########################################################################################
 
 # IMPORTS ===============================================================================
@@ -70,10 +72,12 @@ def pk_odes(x, u, t):
 
 ode   = ODE(func=pk_odes, initial_value=[D, 0.0])
 scope = Scope(labels=["c(t)"])
+blocks = [ode, scope]
+connections = [Connection(ode[1], scope[0])]
 
 sim = Simulation(
-    [ode, scope],
-    [Connection(ode[1], scope[0])],   # blood concentration is state index 1
+    blocks=blocks,
+    connections=connections,
     Solver=SSPRK22,
     dt=0.05, dt_min=1e-10,
     tolerance_lte_rel=1e-5,
