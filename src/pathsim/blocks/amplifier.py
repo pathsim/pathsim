@@ -59,7 +59,7 @@ class Amplifier(Block):
         self.gain = gain
 
         self.op_alg = Operator(
-            func=lambda x: x*self.gain, 
+            func=lambda x: x*self.gain,
             jac=lambda x: self.gain*np.eye(len(x))
             )
 
