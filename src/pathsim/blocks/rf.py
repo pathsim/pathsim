@@ -8,13 +8,8 @@
 ##
 #########################################################################################
 
-# TODO LIST
-# class RFAmplifier Model amplifier in RF systems
-# class Resistor/Capacitor/Inductor
-# class RFMixer for mixer in RF systems?
-
-
 # IMPORTS ===============================================================================
+
 from __future__ import annotations
 
 import numpy as np
@@ -38,10 +33,17 @@ from pathlib import Path
 
 from .lti import StateSpace
 
+from ..utils.deprecation import deprecated
+
 
 # BLOCK DEFINITIONS =====================================================================
 
 
+@deprecated(
+    version="1.0.0",
+    replacement="pathsim_rf.RFNetwork",
+    reason="This block has moved to the pathsim-rf package: pip install pathsim-rf",
+)
 class RFNetwork(StateSpace):
     """N-port RF network linear time invariant (LTI) multi input multi output (MIMO) state-space model.
 
@@ -78,7 +80,7 @@ class RFNetwork(StateSpace):
             _msg = "The scikit-rf package is required to use this block -> 'pip install scikit-rf'"
             raise ImportError(_msg)
 
-        if isinstance(ntwk, Path) or isinstance(ntwk, str):
+        if isinstance(ntwk, (Path, str)):
             ntwk = rf.Network(ntwk)
 
         # Select the vector fitting function from scikit-rf
