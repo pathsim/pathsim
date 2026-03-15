@@ -353,6 +353,70 @@ class Solver:
         return cls(initial_value, parent, **solver_kwargs)
 
 
+    # checkpoint methods ---------------------------------------------------------------
+
+    def to_checkpoint(self, prefix):
+        """Serialize solver state for checkpointing.
+
+        Parameters
+        ----------
+        prefix : str
+            NPZ key prefix for this solver's arrays
+
+        Returns
+        -------
+        json_data : dict
+            JSON-serializable metadata
+        npz_data : dict
+            numpy arrays keyed by path
+        """
+        json_data = {
+            "type": self.__class__.__name__,
+            "is_adaptive": self.is_adaptive,
+            "n": self.n,
+            "history_len": len(self.history),
+            "history_maxlen": self.history.maxlen,
+        }
+
+        npz_data = {
+            f"{prefix}/x": np.atleast_1d(self.x),
+            f"{prefix}/initial_value": np.atleast_1d(self.initial_value),
+        }
+
+        for i, h in enumerate(self.history):
+            npz_data[f"{prefix}/history_{i}"] = np.atleast_1d(h)
+
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, json_data, npz, prefix):
+        """Restore solver state from checkpoint.
+
+        Parameters
+        ----------
+        json_data : dict
+            solver metadata from checkpoint JSON
+        npz : dict-like
+            numpy arrays from checkpoint NPZ
+        prefix : str
+            NPZ key prefix for this solver's arrays
+        """
+        self.x = npz[f"{prefix}/x"].copy()
+        self.initial_value = npz[f"{prefix}/initial_value"].copy()
+
+        #restore scalar format if needed
+        if self._scalar_initial and self.initial_value.size == 1:
+            self.initial_value = self.initial_value.item()
+
+        #restore history
+        maxlen = json_data.get("history_maxlen", self.history.maxlen)
+        self.history = deque([], maxlen=maxlen)
+        for i in range(json_data.get("history_len", 0)):
+            key = f"{prefix}/history_{i}"
+            if key in npz:
+                self.history.append(npz[key].copy())
+
+
     # methods for adaptive timestep solvers --------------------------------------------
 
     def error_controller(self):

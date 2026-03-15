@@ -210,6 +210,50 @@ class GEAR(ImplicitSolver):
         return cls(initial_value, parent, **solver_kwargs)
 
 
+    def to_checkpoint(self, prefix):
+        """Serialize GEAR solver state including startup solver and timestep history."""
+        json_data, npz_data = super().to_checkpoint(prefix)
+
+        json_data["_needs_startup"] = self._needs_startup
+        json_data["history_dt_len"] = len(self.history_dt)
+
+        #timestep history
+        for i, dt in enumerate(self.history_dt):
+            npz_data[f"{prefix}/history_dt_{i}"] = np.atleast_1d(dt)
+
+        #startup solver state
+        if self.startup:
+            s_json, s_npz = self.startup.to_checkpoint(f"{prefix}/startup")
+            json_data["startup"] = s_json
+            npz_data.update(s_npz)
+
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, json_data, npz, prefix):
+        """Restore GEAR solver state including startup solver and timestep history."""
+        super().load_checkpoint(json_data, npz, prefix)
+
+        self._needs_startup = json_data.get("_needs_startup", True)
+
+        #restore timestep history
+        self.history_dt.clear()
+        for i in range(json_data.get("history_dt_len", 0)):
+            key = f"{prefix}/history_dt_{i}"
+            if key in npz:
+                self.history_dt.append(npz[key].item())
+
+        #restore startup solver
+        if self.startup and "startup" in json_data:
+            self.startup.load_checkpoint(json_data["startup"], npz, f"{prefix}/startup")
+
+        #recompute BDF coefficients from restored history
+        if not self._needs_startup and len(self.history_dt) > 0:
+            self.F, self.K = {}, {}
+            for n, _ in enumerate(self.history_dt, 1):
+                self.F[n], self.K[n] = compute_bdf_coefficients(n, np.array(self.history_dt))
+
+
     def stages(self, t, dt):
         """Generator that yields the intermediate evaluation 
         time during the timestep 't + ratio * dt'.

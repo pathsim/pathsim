@@ -10,6 +10,8 @@
 
 # IMPORTS ==============================================================================
 
+import numpy as np
+
 from collections import deque
 from bisect import bisect_left
 
@@ -121,3 +123,44 @@ class AdaptiveBuffer:
         """clear the buffer, reset everything"""
         self.buffer_t.clear()
         self.buffer_v.clear()
+
+
+    def to_checkpoint(self, prefix):
+        """Serialize buffer state for checkpointing.
+
+        Parameters
+        ----------
+        prefix : str
+            NPZ key prefix
+
+        Returns
+        -------
+        npz_data : dict
+            numpy arrays keyed by path
+        """
+        npz_data = {}
+        if self.buffer_t:
+            npz_data[f"{prefix}/buffer_t"] = np.array(list(self.buffer_t))
+            npz_data[f"{prefix}/buffer_v"] = np.array(list(self.buffer_v))
+        return npz_data
+
+
+    def load_checkpoint(self, npz, prefix):
+        """Restore buffer state from checkpoint.
+
+        Parameters
+        ----------
+        npz : dict-like
+            numpy arrays from checkpoint NPZ
+        prefix : str
+            NPZ key prefix
+        """
+        self.clear()
+        t_key = f"{prefix}/buffer_t"
+        v_key = f"{prefix}/buffer_v"
+        if t_key in npz and v_key in npz:
+            times = npz[t_key]
+            values = npz[v_key]
+            for t, v in zip(times, values):
+                self.buffer_t.append(float(t))
+                self.buffer_v.append(v)

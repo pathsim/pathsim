@@ -331,6 +331,140 @@ class Simulation:
             if block: block.plot(*args, **kwargs)
 
 
+    # checkpoint methods ----------------------------------------------------------
+
+    def save_checkpoint(self, path, recordings=False):
+        """Save simulation state to checkpoint files (JSON + NPZ).
+
+        Creates two files: {path}.json (structure/metadata) and
+        {path}.npz (numerical data).
+
+        Parameters
+        ----------
+        path : str
+            base path without extension
+        recordings : bool
+            include scope/spectrum recording data (default: False)
+        """
+        import json
+
+        #strip extension if provided
+        if path.endswith('.json') or path.endswith('.npz'):
+            path = path.rsplit('.', 1)[0]
+
+        #simulation metadata
+        checkpoint = {
+            "version": "1.0.0",
+            "pathsim_version": __version__,
+            "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "simulation": {
+                "time": self.time,
+                "dt": self.dt,
+                "dt_min": self.dt_min,
+                "dt_max": self.dt_max,
+                "solver": self.Solver.__name__,
+                "tolerance_fpi": self.tolerance_fpi,
+                "iterations_max": self.iterations_max,
+            },
+            "blocks": {},
+            "events": {},
+        }
+
+        npz_data = {}
+
+        #checkpoint all blocks (keyed by UUID)
+        for block in self.blocks:
+            b_json, b_npz = block.to_checkpoint(recordings=recordings)
+            checkpoint["blocks"][block.id] = b_json
+            npz_data.update(b_npz)
+
+        #checkpoint external events (keyed by UUID)
+        for event in self.events:
+            e_json, e_npz = event.to_checkpoint()
+            checkpoint["events"][event.id] = e_json
+            npz_data.update(e_npz)
+
+        #write files
+        with open(f"{path}.json", "w", encoding="utf-8") as f:
+            json.dump(checkpoint, f, indent=2, ensure_ascii=False)
+
+        np.savez(f"{path}.npz", **npz_data)
+
+
+    def load_checkpoint(self, path):
+        """Load simulation state from checkpoint files (JSON + NPZ).
+
+        Restores simulation time and all block/event states from a
+        previously saved checkpoint. The simulation must have the same
+        blocks and events as when the checkpoint was saved.
+
+        Parameters
+        ----------
+        path : str
+            base path without extension
+        """
+        import json
+        import warnings
+
+        #strip extension if provided
+        if path.endswith('.json') or path.endswith('.npz'):
+            path = path.rsplit('.', 1)[0]
+
+        #read files
+        with open(f"{path}.json", "r", encoding="utf-8") as f:
+            checkpoint = json.load(f)
+
+        npz = np.load(f"{path}.npz", allow_pickle=False)
+
+        try:
+            #version check
+            cp_version = checkpoint.get("pathsim_version", "unknown")
+            if cp_version != __version__:
+                warnings.warn(
+                    f"Checkpoint was saved with PathSim {cp_version}, "
+                    f"current version is {__version__}"
+                )
+
+            #restore simulation state
+            sim_data = checkpoint["simulation"]
+            self.time = sim_data["time"]
+            self.dt = sim_data["dt"]
+            self.dt_min = sim_data["dt_min"]
+            self.dt_max = sim_data["dt_max"]
+
+            #solver type check
+            if sim_data["solver"] != self.Solver.__name__:
+                warnings.warn(
+                    f"Checkpoint solver '{sim_data['solver']}' differs from "
+                    f"current solver '{self.Solver.__name__}'"
+                )
+
+            #restore blocks
+            block_data = checkpoint.get("blocks", {})
+            for block in self.blocks:
+                if block.id in block_data:
+                    block.load_checkpoint(block_data[block.id], npz)
+                else:
+                    warnings.warn(
+                        f"Block {block.__class__.__name__} (id={block.id[:8]}...) "
+                        f"not found in checkpoint"
+                    )
+
+            #restore external events
+            event_data = checkpoint.get("events", {})
+            for event in self.events:
+                if event.id in event_data:
+                    event.load_checkpoint(event_data[event.id], npz)
+                else:
+                    warnings.warn(
+                        f"Event {event.__class__.__name__} (id={event.id[:8]}...) "
+                        f"not found in checkpoint"
+                    )
+
+        finally:
+            npz.close()
+
+
     # adding system components ----------------------------------------------------
 
     def add_block(self, block):

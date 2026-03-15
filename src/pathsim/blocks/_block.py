@@ -11,6 +11,7 @@
 # IMPORTS ===============================================================================
 
 import inspect
+from uuid import uuid4
 from functools import lru_cache
 
 from ..utils.deprecation import deprecated
@@ -83,6 +84,9 @@ class Block:
     output_port_labels = None
 
     def __init__(self):
+
+        #unique identifier for checkpointing and diagnostics
+        self.id = uuid4().hex
 
         #registers to hold input and output values
         self.inputs = Register(
@@ -522,6 +526,93 @@ class Block:
         """
         if self.engine:
             self.engine.state = val
+
+
+    # checkpoint methods ----------------------------------------------------------------
+
+    def to_checkpoint(self, recordings=False):
+        """Serialize block state for checkpointing.
+
+        Parameters
+        ----------
+        recordings : bool
+            include recording data (for Scope blocks)
+
+        Returns
+        -------
+        json_data : dict
+            JSON-serializable metadata
+        npz_data : dict
+            numpy arrays keyed by path
+        """
+        prefix = self.id
+
+        json_data = {
+            "id": self.id,
+            "type": self.__class__.__name__,
+            "active": self._active,
+        }
+
+        npz_data = {
+            f"{prefix}/inputs": self.inputs.to_array(),
+            f"{prefix}/outputs": self.outputs.to_array(),
+        }
+
+        #solver state
+        if self.engine:
+            e_json, e_npz = self.engine.to_checkpoint(f"{prefix}/engine")
+            json_data["engine"] = e_json
+            npz_data.update(e_npz)
+
+        #internal events
+        if self.events:
+            evt_jsons = []
+            for event in self.events:
+                e_json, e_npz = event.to_checkpoint()
+                evt_jsons.append(e_json)
+                npz_data.update(e_npz)
+            json_data["events"] = evt_jsons
+
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, json_data, npz):
+        """Restore block state from checkpoint.
+
+        Parameters
+        ----------
+        json_data : dict
+            block metadata from checkpoint JSON
+        npz : dict-like
+            numpy arrays from checkpoint NPZ
+        """
+        prefix = json_data["id"]
+
+        #verify type
+        if json_data["type"] != self.__class__.__name__:
+            raise ValueError(
+                f"Checkpoint type mismatch: expected '{self.__class__.__name__}', "
+                f"got '{json_data['type']}'"
+            )
+
+        self._active = json_data["active"]
+
+        #restore registers
+        inp_key = f"{prefix}/inputs"
+        out_key = f"{prefix}/outputs"
+        if inp_key in npz:
+            self.inputs.update_from_array(npz[inp_key])
+        if out_key in npz:
+            self.outputs.update_from_array(npz[out_key])
+
+        #restore solver state
+        if self.engine and "engine" in json_data:
+            self.engine.load_checkpoint(json_data["engine"], npz, f"{prefix}/engine")
+
+        #restore internal events
+        if self.events and "events" in json_data:
+            for event, evt_data in zip(self.events, json_data["events"]):
+                event.load_checkpoint(evt_data, npz)
 
 
     # methods for block output and state updates ----------------------------------------
