@@ -153,10 +153,10 @@ class Simulation:
         get attributes and access to intermediate evaluation stages
     logger : logging.Logger
         global simulation logger
-    _blocks_dyn : set[Block]
-        blocks with internal ´Solver´ instances (stateful) 
-    _blocks_evt : set[Block]
-        blocks with internal events (discrete time, eventful) 
+    _blocks_dyn : list[Block]
+        blocks with internal ´Solver´ instances (stateful)
+    _blocks_evt : list[Block]
+        blocks with internal events (discrete time, eventful)
     _active : bool
         flag for setting the simulation as active, used for interrupts
     """
@@ -176,10 +176,13 @@ class Simulation:
         **solver_kwargs
         ):
 
-        #system definition
-        self.blocks      = set()
-        self.connections = set()
-        self.events      = set()
+        #system definition (ordered lists with shadow sets for O(1) lookup)
+        self.blocks      = []
+        self._block_set  = set()
+        self.connections = []
+        self._conn_set   = set()
+        self.events      = []
+        self._event_set  = set()
 
         #simulation timestep and bounds
         self.dt     = dt
@@ -215,10 +218,12 @@ class Simulation:
         self.time = 0.0
 
         #collection of blocks with internal ODE solvers
-        self._blocks_dyn = set()
+        self._blocks_dyn = []
+        self._blocks_dyn_set = set()
 
         #collection of blocks with internal events
-        self._blocks_evt = set()
+        self._blocks_evt = []
+        self._blocks_evt_set = set()
 
         #flag for setting the simulation active
         self._active = True
@@ -269,9 +274,9 @@ class Simulation:
         bool
         """
         return (
-            other in self.blocks or 
-            other in self.connections or 
-            other in self.events
+            other in self._block_set or
+            other in self._conn_set or
+            other in self._event_set
             )
 
 
@@ -480,7 +485,7 @@ class Simulation:
         """
 
         #check if block already in block list
-        if block in self.blocks:
+        if block in self._block_set:
             _msg = f"block {block} already part of simulation"
             self.logger.error(_msg)
             raise ValueError(_msg)
@@ -490,14 +495,17 @@ class Simulation:
 
         #add to dynamic list if solver was initialized
         if block.engine:
-            self._blocks_dyn.add(block)
+            self._blocks_dyn.append(block)
+            self._blocks_dyn_set.add(block)
 
         #add to eventful list if internal events
         if block.events:
-            self._blocks_evt.add(block)
+            self._blocks_evt.append(block)
+            self._blocks_evt_set.add(block)
 
         #add block to global blocklist
-        self.blocks.add(block)
+        self.blocks.append(block)
+        self._block_set.add(block)
 
         #mark graph for rebuild
         if self.graph:
@@ -517,19 +525,24 @@ class Simulation:
         """
 
         #check if block is in block list
-        if block not in self.blocks:
+        if block not in self._block_set:
             _msg = f"block {block} not part of simulation"
             self.logger.error(_msg)
             raise ValueError(_msg)
 
         #remove from global blocklist
-        self.blocks.discard(block)
+        self.blocks.remove(block)
+        self._block_set.discard(block)
 
         #remove from dynamic list
-        self._blocks_dyn.discard(block)
+        if block in self._blocks_dyn_set:
+            self._blocks_dyn.remove(block)
+            self._blocks_dyn_set.discard(block)
 
         #remove from eventful list
-        self._blocks_evt.discard(block)
+        if block in self._blocks_evt_set:
+            self._blocks_evt.remove(block)
+            self._blocks_evt_set.discard(block)
 
         #mark graph for rebuild
         if self.graph:
@@ -549,13 +562,14 @@ class Simulation:
         """
 
         #check if connection already in connection list
-        if connection in self.connections:
+        if connection in self._conn_set:
             _msg = f"{connection} already part of simulation"
             self.logger.error(_msg)
             raise ValueError(_msg)
 
         #add connection to global connection list
-        self.connections.add(connection)
+        self.connections.append(connection)
+        self._conn_set.add(connection)
 
         #mark graph for rebuild
         if self.graph:
@@ -575,13 +589,14 @@ class Simulation:
         """
 
         #check if connection is in connection list
-        if connection not in self.connections:
+        if connection not in self._conn_set:
             _msg = f"{connection} not part of simulation"
             self.logger.error(_msg)
             raise ValueError(_msg)
 
         #remove from global connection list
-        self.connections.discard(connection)
+        self.connections.remove(connection)
+        self._conn_set.discard(connection)
 
         #mark graph for rebuild
         if self.graph:
@@ -600,13 +615,14 @@ class Simulation:
         """
 
         #check if event already in event list
-        if event in self.events:
+        if event in self._event_set:
             _msg = f"{event} already part of simulation"
             self.logger.error(_msg)
             raise ValueError(_msg)
 
         #add event to global event list
-        self.events.add(event)
+        self.events.append(event)
+        self._event_set.add(event)
 
 
     def remove_event(self, event):
@@ -621,13 +637,14 @@ class Simulation:
         """
 
         #check if event is in event list
-        if event not in self.events:
+        if event not in self._event_set:
             _msg = f"{event} not part of simulation"
             self.logger.error(_msg)
             raise ValueError(_msg)
 
         #remove from global event list
-        self.events.discard(event)
+        self.events.remove(event)
+        self._event_set.discard(event)
 
 
     # system assembly -------------------------------------------------------------
@@ -685,10 +702,11 @@ class Simulation:
             conn_blocks.update(conn.get_blocks())
 
         # Check subset actively managed
-        if not conn_blocks.issubset(self.blocks):
-            self.logger.warning(
-                f"{blk} in 'connections' but not in 'blocks'!"
-                )
+        for blk in conn_blocks:
+            if blk not in self._block_set:
+                self.logger.warning(
+                    f"{blk} in 'connections' but not in 'blocks'!"
+                    )
 
 
     # solver management -----------------------------------------------------------
@@ -719,13 +737,15 @@ class Simulation:
         self.engine = self.Solver()
 
         #iterate all blocks and set integration engines with tolerances
-        self._blocks_dyn = set()
+        self._blocks_dyn = []
+        self._blocks_dyn_set = set()
         for block in self.blocks:
             block.set_solver(self.Solver, self.engine, **self.solver_kwargs)
-            
+
             #add dynamic blocks to list
             if block.engine:
-                self._blocks_dyn.add(block)
+                self._blocks_dyn.append(block)
+                self._blocks_dyn_set.add(block)
 
         #logging message
         self.logger.info(
