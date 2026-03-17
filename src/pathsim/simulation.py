@@ -363,7 +363,7 @@ class Simulation:
         return f"{type_name}_{idx}"
 
 
-    def save_checkpoint(self, path, recordings=False):
+    def save_checkpoint(self, path, recordings=True):
         """Save simulation state to checkpoint files (JSON + NPZ).
 
         Creates two files: {path}.json (structure/metadata) and
@@ -375,7 +375,7 @@ class Simulation:
         path : str
             base path without extension
         recordings : bool
-            include scope/spectrum recording data (default: False)
+            include scope/spectrum recording data (default: True)
         """
         #strip extension if provided
         if path.endswith('.json') or path.endswith('.npz'):
