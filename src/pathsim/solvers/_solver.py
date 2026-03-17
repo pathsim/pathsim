@@ -403,6 +403,7 @@ class Solver:
         """
         self.x = npz[f"{prefix}/x"].copy()
         self.initial_value = npz[f"{prefix}/initial_value"].copy()
+        self.n = json_data.get("n", self.n)
 
         #restore scalar format if needed
         if self._scalar_initial and self.initial_value.size == 1:

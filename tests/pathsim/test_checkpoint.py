@@ -518,3 +518,226 @@ class TestSubsystemCheckpoint:
             )
             sim2.load_checkpoint(path)
             assert np.allclose(I2.state, state_before)
+
+
+class TestGEARCheckpoint:
+    """Test GEAR solver checkpoint round-trip."""
+
+    def test_gear_solver_roundtrip(self):
+        """GEAR solver state survives checkpoint including BDF coefficients."""
+        from pathsim.solvers import GEAR32
+
+        src = Source(lambda t: np.sin(2 * np.pi * t))
+        integ = Integrator()
+        sim = Simulation(
+            blocks=[src, integ],
+            connections=[Connection(src, integ)],
+            dt=0.01,
+            Solver=GEAR32
+        )
+
+        #run long enough for GEAR to exit startup phase
+        sim.run(0.5)
+        state_after = integ.state.copy()
+        time_after = sim.time
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim.save_checkpoint(path)
+
+            #reset state
+            integ.state = np.array([0.0])
+            sim.time = 0.0
+
+            sim.load_checkpoint(path)
+            assert sim.time == time_after
+            assert np.allclose(integ.state, state_after)
+
+    def test_gear_continue_after_load(self):
+        """GEAR simulation continues correctly after checkpoint load."""
+        from pathsim.solvers import GEAR32
+
+        #reference: run 2s continuously
+        src1 = Source(lambda t: 1.0)
+        integ1 = Integrator()
+        sim1 = Simulation(
+            blocks=[src1, integ1],
+            connections=[Connection(src1, integ1)],
+            dt=0.01,
+            Solver=GEAR32
+        )
+        sim1.run(2.0)
+        reference = integ1.state.copy()
+
+        #split: run 1s, save, load, run 1s more
+        src2 = Source(lambda t: 1.0)
+        integ2 = Integrator()
+        sim2 = Simulation(
+            blocks=[src2, integ2],
+            connections=[Connection(src2, integ2)],
+            dt=0.01,
+            Solver=GEAR32
+        )
+        sim2.run(1.0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim2.save_checkpoint(path)
+            sim2.load_checkpoint(path)
+            sim2.run(1.0)
+
+        assert np.allclose(integ2.state, reference, rtol=1e-6)
+
+
+class TestSpectrumCheckpoint:
+    """Test Spectrum block checkpoint."""
+
+    def test_spectrum_roundtrip(self):
+        """Spectrum block state survives checkpoint round-trip."""
+        from pathsim.blocks.spectrum import Spectrum
+
+        src = Source(lambda t: np.sin(2 * np.pi * 10 * t))
+        spec = Spectrum(freq=[5, 10, 15], t_wait=0.0)
+        sim = Simulation(
+            blocks=[src, spec],
+            connections=[Connection(src, spec)],
+            dt=0.001
+        )
+        sim.run(0.1)
+
+        time_before = spec.time
+        t_sample_before = spec.t_sample
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim.save_checkpoint(path)
+
+            spec.time = 0.0
+            spec.t_sample = 0.0
+
+            sim.load_checkpoint(path)
+            assert spec.time == pytest.approx(time_before)
+            assert spec.t_sample == pytest.approx(t_sample_before)
+
+
+class TestScopeCheckpointExtended:
+    """Extended Scope checkpoint tests for coverage."""
+
+    def test_scope_with_sampling_period(self):
+        """Scope with sampling_period preserves _sample_next_timestep."""
+        src = Source(lambda t: t)
+        scope = Scope(sampling_period=0.1)
+        sim = Simulation(
+            blocks=[src, scope],
+            connections=[Connection(src, scope)],
+            dt=0.01
+        )
+        sim.run(0.5)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim.save_checkpoint(path)
+            sim.load_checkpoint(path)
+
+            #verify scope still works after load
+            sim.run(0.1)
+            assert len(scope.recording_time) > 0
+
+    def test_scope_recordings_roundtrip(self):
+        """Scope recording data round-trips with recordings=True."""
+        src = Source(lambda t: t)
+        scope = Scope()
+        sim = Simulation(
+            blocks=[src, scope],
+            connections=[Connection(src, scope)],
+            dt=0.1
+        )
+        sim.run(1.0)
+
+        rec_time = scope.recording_time.copy()
+        rec_data = [row.copy() for row in scope.recording_data]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim.save_checkpoint(path, recordings=True)
+
+            #clear recordings
+            scope.recording_time = []
+            scope.recording_data = []
+
+            sim.load_checkpoint(path)
+            assert len(scope.recording_time) == len(rec_time)
+            assert np.allclose(scope.recording_time, rec_time)
+
+
+class TestSimulationCheckpointExtended:
+    """Extended simulation checkpoint tests for coverage."""
+
+    def test_save_load_with_extension(self):
+        """Path with .json extension is handled correctly."""
+        src = Source(lambda t: 1.0)
+        integ = Integrator()
+        sim = Simulation(
+            blocks=[src, integ],
+            connections=[Connection(src, integ)],
+            dt=0.01
+        )
+        sim.run(0.1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp.json")
+            sim.save_checkpoint(path)
+
+            assert os.path.exists(os.path.join(tmpdir, "cp.json"))
+            assert os.path.exists(os.path.join(tmpdir, "cp.npz"))
+
+            sim.load_checkpoint(path)
+            assert sim.time == pytest.approx(0.1, abs=0.01)
+
+    def test_checkpoint_with_events(self):
+        """Simulation with external events checkpoints correctly."""
+        from pathsim.events import Schedule
+
+        src = Source(lambda t: 1.0)
+        integ = Integrator()
+
+        event_fired = [False]
+        def on_event(t):
+            event_fired[0] = True
+
+        evt = Schedule(t_start=0.5, t_period=1.0, func_act=on_event)
+
+        sim = Simulation(
+            blocks=[src, integ],
+            connections=[Connection(src, integ)],
+            events=[evt],
+            dt=0.01
+        )
+        sim.run(1.0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim.save_checkpoint(path)
+
+            #verify events in JSON
+            with open(f"{path}.json") as f:
+                data = json.load(f)
+            assert len(data["events"]) == 1
+            assert data["events"][0]["type"] == "Schedule"
+
+            sim.load_checkpoint(path)
+
+    def test_event_numpy_history(self):
+        """Event with numpy scalar in history serializes correctly."""
+        from pathsim.events import ZeroCrossing
+
+        e = ZeroCrossing(func_evt=lambda t: t - 1.0)
+        e._history = (np.float64(0.5), 0.99)
+        prefix = "ZeroCrossing_0"
+
+        json_data, npz_data = e.to_checkpoint(prefix)
+        assert isinstance(json_data["history_eval"], float)
+
+        e.reset()
+        e.load_checkpoint(prefix, json_data, npz_data)
+        assert e._history[0] == pytest.approx(0.5)
