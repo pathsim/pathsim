@@ -250,8 +250,8 @@ class GEAR(ImplicitSolver):
         #recompute BDF coefficients from restored history
         if not self._needs_startup and len(self.history_dt) > 0:
             self.F, self.K = {}, {}
-            for n, _ in enumerate(self.history_dt, 1):
-                self.F[n], self.K[n] = compute_bdf_coefficients(n, np.array(self.history_dt))
+            for k, _ in enumerate(self.history_dt, 1):
+                self.F[k], self.K[k] = compute_bdf_coefficients(k, np.array(self.history_dt))
 
 
     def stages(self, t, dt):

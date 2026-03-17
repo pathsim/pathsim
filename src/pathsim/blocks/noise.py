@@ -44,6 +44,17 @@ class WhiteNoise(Block):
         random seed for reproducibility
     """
 
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize WhiteNoise state including current sample."""
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
+        json_data["_current_sample"] = float(self._current_sample)
+        return json_data, npz_data
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore WhiteNoise state including current sample."""
+        super().load_checkpoint(prefix, json_data, npz)
+        self._current_sample = json_data.get("_current_sample", 0.0)
+
     input_port_labels = {}
     output_port_labels = {"out": 0}
 
@@ -155,6 +166,22 @@ class PinkNoise(Block):
     seed : int, optional
         random seed for reproducibility
     """
+
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize PinkNoise state including algorithm state."""
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
+        json_data["n_samples"] = self.n_samples
+        json_data["_current_sample"] = float(self._current_sample)
+        npz_data[f"{prefix}/octave_values"] = self.octave_values
+        return json_data, npz_data
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore PinkNoise state including algorithm state."""
+        super().load_checkpoint(prefix, json_data, npz)
+        self.n_samples = json_data.get("n_samples", 0)
+        self._current_sample = json_data.get("_current_sample", 0.0)
+        if f"{prefix}/octave_values" in npz:
+            self.octave_values = npz[f"{prefix}/octave_values"]
 
     input_port_labels = {}
     output_port_labels = {"out": 0}
