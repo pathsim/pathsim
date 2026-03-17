@@ -11,8 +11,6 @@
 
 import numpy as np
 
-from uuid import uuid4
-
 from .. _constants import EVT_TOLERANCE
 
 
@@ -66,9 +64,6 @@ class Event:
         tolerance=EVT_TOLERANCE
         ):
             
-        #unique identifier for checkpointing and diagnostics
-        self.id = uuid4().hex
-
         #event detection function
         self.func_evt = func_evt
 

@@ -103,6 +103,7 @@ class RandomNumberGenerator(Block):
             json_data["_sample"] = float(self._sample)
         return json_data, npz_data
 
+
     def load_checkpoint(self, prefix, json_data, npz):
         """Restore RNG state including current sample."""
         super().load_checkpoint(prefix, json_data, npz)

@@ -11,7 +11,6 @@
 # IMPORTS ===============================================================================
 
 import inspect
-from uuid import uuid4
 from functools import lru_cache
 
 from ..utils.deprecation import deprecated
@@ -84,9 +83,6 @@ class Block:
     output_port_labels = None
 
     def __init__(self):
-
-        #unique identifier for checkpointing and diagnostics
-        self.id = uuid4().hex
 
         #registers to hold input and output values
         self.inputs = Register(

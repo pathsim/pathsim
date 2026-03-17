@@ -150,6 +150,7 @@ class KalmanFilter(Block):
         npz_data[f"{prefix}/kf_P"] = self.P
         return json_data, npz_data
 
+
     def load_checkpoint(self, prefix, json_data, npz):
         """Restore Kalman filter state estimate and covariance."""
         super().load_checkpoint(prefix, json_data, npz)

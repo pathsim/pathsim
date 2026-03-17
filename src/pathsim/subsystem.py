@@ -462,6 +462,16 @@ class Subsystem(Block):
             block.reset()
 
 
+    @staticmethod
+    def _checkpoint_key(type_name, type_counts):
+        """Generate a deterministic checkpoint key from block/event type
+        and occurrence index (e.g. 'Integrator_0', 'Scope_1').
+        """
+        idx = type_counts.get(type_name, 0)
+        type_counts[type_name] = idx + 1
+        return f"{type_name}_{idx}"
+
+
     def to_checkpoint(self, prefix, recordings=False):
         """Serialize subsystem state by recursively checkpointing internal blocks.
 
@@ -494,10 +504,7 @@ class Subsystem(Block):
         #checkpoint internal blocks by type + insertion order
         type_counts = {}
         for block in self.blocks:
-            type_name = block.__class__.__name__
-            idx = type_counts.get(type_name, 0)
-            type_counts[type_name] = idx + 1
-            key = f"{prefix}/{type_name}_{idx}"
+            key = f"{prefix}/{self._checkpoint_key(block.__class__.__name__, type_counts)}"
             b_json, b_npz = block.to_checkpoint(key, recordings=recordings)
             b_json["_key"] = key
             json_data["blocks"].append(b_json)
@@ -545,10 +552,7 @@ class Subsystem(Block):
         block_data = {b["_key"]: b for b in json_data.get("blocks", [])}
         type_counts = {}
         for block in self.blocks:
-            type_name = block.__class__.__name__
-            idx = type_counts.get(type_name, 0)
-            type_counts[type_name] = idx + 1
-            key = f"{prefix}/{type_name}_{idx}"
+            key = f"{prefix}/{self._checkpoint_key(block.__class__.__name__, type_counts)}"
             if key in block_data:
                 block.load_checkpoint(key, block_data[key], npz)
 

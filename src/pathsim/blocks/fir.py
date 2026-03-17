@@ -120,6 +120,7 @@ class FIR(Block):
         npz_data[f"{prefix}/fir_buffer"] = np.array(list(self._buffer))
         return json_data, npz_data
 
+
     def load_checkpoint(self, prefix, json_data, npz):
         """Restore FIR state including input buffer."""
         super().load_checkpoint(prefix, json_data, npz)

@@ -87,6 +87,7 @@ class Switch(Block):
         json_data["switch_state"] = self.switch_state
         return json_data, npz_data
 
+
     def load_checkpoint(self, prefix, json_data, npz):
         super().load_checkpoint(prefix, json_data, npz)
         self.switch_state = json_data.get("switch_state", None)

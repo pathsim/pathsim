@@ -277,10 +277,6 @@ class TestSimulationCheckpoint:
                 dt=0.01
             )
 
-            #UUIDs differ
-            assert src1.id != src2.id
-            assert integ1.id != integ2.id
-
             sim2.load_checkpoint(path)
             assert sim2.time == saved_time
             assert np.allclose(integ2.state, saved_state)
