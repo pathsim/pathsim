@@ -669,6 +669,32 @@ class TestScopeCheckpointExtended:
             assert len(scope.recording_time) == len(rec_time)
             assert np.allclose(scope.recording_time, rec_time)
 
+    def test_scope_recordings_included_by_default(self):
+        """Default save_checkpoint includes recordings."""
+        src = Source(lambda t: t)
+        scope = Scope()
+        sim = Simulation(
+            blocks=[src, scope],
+            connections=[Connection(src, scope)],
+            dt=0.1
+        )
+        sim.run(1.0)
+
+        rec_time = scope.recording_time.copy()
+        assert len(rec_time) > 0
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim.save_checkpoint(path)  # no recordings kwarg — default
+
+            #clear recordings
+            scope.recording_time = []
+            scope.recording_data = []
+
+            sim.load_checkpoint(path)
+            assert len(scope.recording_time) == len(rec_time)
+            assert np.allclose(scope.recording_time, rec_time)
+
 
 class TestSimulationCheckpointExtended:
     """Extended simulation checkpoint tests for coverage."""
