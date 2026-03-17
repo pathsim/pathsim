@@ -22,55 +22,45 @@ class TestBlockCheckpoint:
         """Block produces valid checkpoint data."""
         b = Integrator(1.0)
         b.inputs[0] = 3.14
-        json_data, npz_data = b.to_checkpoint()
+        prefix = "Integrator_0"
+        json_data, npz_data = b.to_checkpoint(prefix)
 
         assert json_data["type"] == "Integrator"
-        assert json_data["id"] == b.id
         assert json_data["active"] is True
-        assert f"{b.id}/inputs" in npz_data
-        assert f"{b.id}/outputs" in npz_data
-
-    def test_block_has_uuid(self):
-        """Each block gets a unique UUID."""
-        b1 = Integrator()
-        b2 = Integrator()
-        assert b1.id != b2.id
-        assert len(b1.id) == 32  # hex UUID without dashes
+        assert f"{prefix}/inputs" in npz_data
+        assert f"{prefix}/outputs" in npz_data
 
     def test_block_checkpoint_roundtrip(self):
         """Block state survives save/load cycle."""
         b = Integrator(2.5)
         b.inputs[0] = 1.0
         b.outputs[0] = 2.5
+        prefix = "Integrator_0"
 
-        json_data, npz_data = b.to_checkpoint()
+        json_data, npz_data = b.to_checkpoint(prefix)
 
         #reset block
         b.reset()
         assert b.inputs[0] == 0.0
 
         #restore
-        b.load_checkpoint(json_data, npz_data)
+        b.load_checkpoint(prefix, json_data, npz_data)
         assert np.isclose(b.inputs[0], 1.0)
         assert np.isclose(b.outputs[0], 2.5)
 
     def test_block_type_mismatch_raises(self):
         """Loading checkpoint with wrong type raises ValueError."""
         b = Integrator()
-        json_data, npz_data = b.to_checkpoint()
+        prefix = "Integrator_0"
+        json_data, npz_data = b.to_checkpoint(prefix)
 
         b2 = Amplifier(1.0)
         with pytest.raises(ValueError, match="type mismatch"):
-            b2.load_checkpoint(json_data, npz_data)
+            b2.load_checkpoint(prefix, json_data, npz_data)
 
 
 class TestEventCheckpoint:
     """Test event-level checkpoint methods."""
-
-    def test_event_has_uuid(self):
-        from pathsim.events import ZeroCrossing
-        e = ZeroCrossing(func_evt=lambda t: t - 1.0)
-        assert len(e.id) == 32
 
     def test_event_checkpoint_roundtrip(self):
         from pathsim.events import ZeroCrossing
@@ -78,14 +68,15 @@ class TestEventCheckpoint:
         e._history = (0.5, 0.99)
         e._times = [1.0, 2.0, 3.0]
         e._active = False
+        prefix = "ZeroCrossing_0"
 
-        json_data, npz_data = e.to_checkpoint()
+        json_data, npz_data = e.to_checkpoint(prefix)
 
         e.reset()
         assert e._active is True
         assert len(e._times) == 0
 
-        e.load_checkpoint(json_data, npz_data)
+        e.load_checkpoint(prefix, json_data, npz_data)
         assert e._active is False
         assert e._times == [1.0, 2.0, 3.0]
         assert e._history == (0.5, 0.99)
@@ -96,12 +87,13 @@ class TestSwitchCheckpoint:
 
     def test_switch_state_preserved(self):
         s = Switch(switch_state=2)
-        json_data, npz_data = s.to_checkpoint()
+        prefix = "Switch_0"
+        json_data, npz_data = s.to_checkpoint(prefix)
 
         s.select(None)
         assert s.switch_state is None
 
-        s.load_checkpoint(json_data, npz_data)
+        s.load_checkpoint(prefix, json_data, npz_data)
         assert s.switch_state == 2
 
 
@@ -140,7 +132,7 @@ class TestSimulationCheckpoint:
                 data = json.load(f)
             assert data["version"] == "1.0.0"
             assert data["simulation"]["time"] == time_after_run
-            assert integ.id in data["blocks"]
+            assert any(b["_key"] == "Integrator_0" for b in data["blocks"])
 
             #reset and reload
             sim.time = 0.0
@@ -198,14 +190,14 @@ class TestSimulationCheckpoint:
             path1 = os.path.join(tmpdir, "no_rec")
             sim.save_checkpoint(path1, recordings=False)
             npz1 = np.load(f"{path1}.npz")
-            assert f"{scope.id}/recording_time" not in npz1
+            assert "Scope_0/recording_time" not in npz1
             npz1.close()
 
             #with recordings
             path2 = os.path.join(tmpdir, "with_rec")
             sim.save_checkpoint(path2, recordings=True)
             npz2 = np.load(f"{path2}.npz")
-            assert f"{scope.id}/recording_time" in npz2
+            assert "Scope_0/recording_time" in npz2
             npz2.close()
 
     def test_delay_continuous_checkpoint(self):

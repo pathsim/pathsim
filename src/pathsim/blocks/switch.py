@@ -82,13 +82,13 @@ class Switch(Block):
         self.switch_state = switch_state
 
 
-    def to_checkpoint(self, recordings=False):
-        json_data, npz_data = super().to_checkpoint(recordings=recordings)
+    def to_checkpoint(self, prefix, recordings=False):
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
         json_data["switch_state"] = self.switch_state
         return json_data, npz_data
 
-    def load_checkpoint(self, json_data, npz):
-        super().load_checkpoint(json_data, npz)
+    def load_checkpoint(self, prefix, json_data, npz):
+        super().load_checkpoint(prefix, json_data, npz)
         self.switch_state = json_data.get("switch_state", None)
 
     def update(self, t):

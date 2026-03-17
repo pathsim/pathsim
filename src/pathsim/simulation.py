@@ -338,11 +338,34 @@ class Simulation:
 
     # checkpoint methods ----------------------------------------------------------
 
+    @staticmethod
+    def _checkpoint_key(type_name, type_counts):
+        """Generate a deterministic checkpoint key from block/event type
+        and occurrence index (e.g. 'Integrator_0', 'Scope_1').
+
+        Parameters
+        ----------
+        type_name : str
+            class name of the block or event
+        type_counts : dict
+            running counter per type name, mutated in place
+
+        Returns
+        -------
+        key : str
+            deterministic checkpoint key
+        """
+        idx = type_counts.get(type_name, 0)
+        type_counts[type_name] = idx + 1
+        return f"{type_name}_{idx}"
+
+
     def save_checkpoint(self, path, recordings=False):
         """Save simulation state to checkpoint files (JSON + NPZ).
 
         Creates two files: {path}.json (structure/metadata) and
-        {path}.npz (numerical data).
+        {path}.npz (numerical data). Blocks and events are keyed by
+        type and insertion order for deterministic cross-instance matching.
 
         Parameters
         ----------
@@ -371,22 +394,28 @@ class Simulation:
                 "tolerance_fpi": self.tolerance_fpi,
                 "iterations_max": self.iterations_max,
             },
-            "blocks": {},
-            "events": {},
+            "blocks": [],
+            "events": [],
         }
 
         npz_data = {}
 
-        #checkpoint all blocks (keyed by UUID)
+        #checkpoint all blocks (keyed by type + insertion index)
+        type_counts = {}
         for block in self.blocks:
-            b_json, b_npz = block.to_checkpoint(recordings=recordings)
-            checkpoint["blocks"][block.id] = b_json
+            key = self._checkpoint_key(block.__class__.__name__, type_counts)
+            b_json, b_npz = block.to_checkpoint(key, recordings=recordings)
+            b_json["_key"] = key
+            checkpoint["blocks"].append(b_json)
             npz_data.update(b_npz)
 
-        #checkpoint external events (keyed by UUID)
+        #checkpoint external events (keyed by type + insertion index)
+        type_counts = {}
         for event in self.events:
-            e_json, e_npz = event.to_checkpoint()
-            checkpoint["events"][event.id] = e_json
+            key = self._checkpoint_key(event.__class__.__name__, type_counts)
+            e_json, e_npz = event.to_checkpoint(key)
+            e_json["_key"] = key
+            checkpoint["events"].append(e_json)
             npz_data.update(e_npz)
 
         #write files
@@ -400,8 +429,9 @@ class Simulation:
         """Load simulation state from checkpoint files (JSON + NPZ).
 
         Restores simulation time and all block/event states from a
-        previously saved checkpoint. The simulation must have the same
-        blocks and events as when the checkpoint was saved.
+        previously saved checkpoint. Matching is based on block/event
+        type and insertion order, so the simulation must be constructed
+        with the same block types in the same order.
 
         Parameters
         ----------
@@ -444,26 +474,32 @@ class Simulation:
                     f"current solver '{self.Solver.__name__}'"
                 )
 
-            #restore blocks
-            block_data = checkpoint.get("blocks", {})
+            #index checkpoint blocks by key
+            block_data = {b["_key"]: b for b in checkpoint.get("blocks", [])}
+
+            #restore blocks by type + insertion order
+            type_counts = {}
             for block in self.blocks:
-                if block.id in block_data:
-                    block.load_checkpoint(block_data[block.id], npz)
+                key = self._checkpoint_key(block.__class__.__name__, type_counts)
+                if key in block_data:
+                    block.load_checkpoint(key, block_data[key], npz)
                 else:
                     warnings.warn(
-                        f"Block {block.__class__.__name__} (id={block.id[:8]}...) "
-                        f"not found in checkpoint"
+                        f"Block '{key}' not found in checkpoint"
                     )
 
-            #restore external events
-            event_data = checkpoint.get("events", {})
+            #index checkpoint events by key
+            event_data = {e["_key"]: e for e in checkpoint.get("events", [])}
+
+            #restore external events by type + insertion order
+            type_counts = {}
             for event in self.events:
-                if event.id in event_data:
-                    event.load_checkpoint(event_data[event.id], npz)
+                key = self._checkpoint_key(event.__class__.__name__, type_counts)
+                if key in event_data:
+                    event.load_checkpoint(key, event_data[key], npz)
                 else:
                     warnings.warn(
-                        f"Event {event.__class__.__name__} (id={event.id[:8]}...) "
-                        f"not found in checkpoint"
+                        f"Event '{key}' not found in checkpoint"
                     )
 
         finally:

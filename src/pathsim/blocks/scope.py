@@ -448,10 +448,9 @@ class Scope(Block):
                 wrt.writerow(sample)
 
 
-    def to_checkpoint(self, recordings=False):
+    def to_checkpoint(self, prefix, recordings=False):
         """Serialize Scope state including optional recording data."""
-        json_data, npz_data = super().to_checkpoint(recordings=recordings)
-        prefix = self.id
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
 
         json_data["_incremental_idx"] = self._incremental_idx
         if hasattr(self, '_sample_next_timestep'):
@@ -464,10 +463,9 @@ class Scope(Block):
         return json_data, npz_data
 
 
-    def load_checkpoint(self, json_data, npz):
+    def load_checkpoint(self, prefix, json_data, npz):
         """Restore Scope state including optional recording data."""
-        super().load_checkpoint(json_data, npz)
-        prefix = json_data["id"]
+        super().load_checkpoint(prefix, json_data, npz)
 
         self._incremental_idx = json_data.get("_incremental_idx", 0)
         if hasattr(self, '_sample_next_timestep'):
@@ -479,9 +477,6 @@ class Scope(Block):
         if rt_key in npz and rd_key in npz:
             self.recording_time = npz[rt_key].tolist()
             self.recording_data = [row for row in npz[rd_key]]
-        else:
-            self.recording_time = []
-            self.recording_data = []
 
 
     def update(self, t):

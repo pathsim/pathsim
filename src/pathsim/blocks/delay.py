@@ -142,10 +142,9 @@ class Delay(Block):
             self._ring.extend([0.0] * self._n)
 
 
-    def to_checkpoint(self, recordings=False):
+    def to_checkpoint(self, prefix, recordings=False):
         """Serialize Delay state including buffer data."""
-        json_data, npz_data = super().to_checkpoint(recordings=recordings)
-        prefix = self.id
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
 
         json_data["sampling_period"] = self.sampling_period
 
@@ -160,10 +159,9 @@ class Delay(Block):
         return json_data, npz_data
 
 
-    def load_checkpoint(self, json_data, npz):
+    def load_checkpoint(self, prefix, json_data, npz):
         """Restore Delay state including buffer data."""
-        super().load_checkpoint(json_data, npz)
-        prefix = json_data["id"]
+        super().load_checkpoint(prefix, json_data, npz)
 
         if self.sampling_period is None:
             #continuous mode

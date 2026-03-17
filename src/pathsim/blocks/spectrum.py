@@ -283,9 +283,9 @@ class Spectrum(Block):
         return True, 0.0, None
 
 
-    def to_checkpoint(self, recordings=False):
+    def to_checkpoint(self, prefix, recordings=False):
         """Serialize Spectrum state including integration time."""
-        json_data, npz_data = super().to_checkpoint(recordings=recordings)
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
 
         json_data["time"] = self.time
         json_data["t_sample"] = self.t_sample
@@ -293,9 +293,9 @@ class Spectrum(Block):
         return json_data, npz_data
 
 
-    def load_checkpoint(self, json_data, npz):
+    def load_checkpoint(self, prefix, json_data, npz):
         """Restore Spectrum state including integration time."""
-        super().load_checkpoint(json_data, npz)
+        super().load_checkpoint(prefix, json_data, npz)
 
         self.time = json_data.get("time", 0.0)
         self.t_sample = json_data.get("t_sample", 0.0)

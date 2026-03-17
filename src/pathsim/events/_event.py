@@ -211,8 +211,13 @@ class Event:
 
     # checkpoint methods ----------------------------------------------------------------
 
-    def to_checkpoint(self):
+    def to_checkpoint(self, prefix):
         """Serialize event state for checkpointing.
+
+        Parameters
+        ----------
+        prefix : str
+            key prefix for NPZ arrays (assigned by simulation)
 
         Returns
         -------
@@ -221,15 +226,12 @@ class Event:
         npz_data : dict
             numpy arrays keyed by path
         """
-        prefix = self.id
-
         #extract history eval value
         hist_eval, hist_time = self._history
         if hist_eval is not None and hasattr(hist_eval, 'item'):
             hist_eval = float(hist_eval)
 
         json_data = {
-            "id": self.id,
             "type": self.__class__.__name__,
             "active": self._active,
             "history_eval": hist_eval,
@@ -243,18 +245,18 @@ class Event:
         return json_data, npz_data
 
 
-    def load_checkpoint(self, json_data, npz):
+    def load_checkpoint(self, prefix, json_data, npz):
         """Restore event state from checkpoint.
 
         Parameters
         ----------
+        prefix : str
+            key prefix for NPZ arrays (assigned by simulation)
         json_data : dict
             event metadata from checkpoint JSON
         npz : dict-like
             numpy arrays from checkpoint NPZ
         """
-        prefix = json_data["id"]
-
         self._active = json_data["active"]
         self._history = json_data["history_eval"], json_data["history_time"]
 

@@ -530,11 +530,13 @@ class Block:
 
     # checkpoint methods ----------------------------------------------------------------
 
-    def to_checkpoint(self, recordings=False):
+    def to_checkpoint(self, prefix, recordings=False):
         """Serialize block state for checkpointing.
 
         Parameters
         ----------
+        prefix : str
+            key prefix for NPZ arrays (assigned by simulation)
         recordings : bool
             include recording data (for Scope blocks)
 
@@ -545,10 +547,7 @@ class Block:
         npz_data : dict
             numpy arrays keyed by path
         """
-        prefix = self.id
-
         json_data = {
-            "id": self.id,
             "type": self.__class__.__name__,
             "active": self._active,
         }
@@ -567,8 +566,9 @@ class Block:
         #internal events
         if self.events:
             evt_jsons = []
-            for event in self.events:
-                e_json, e_npz = event.to_checkpoint()
+            for i, event in enumerate(self.events):
+                evt_prefix = f"{prefix}/evt_{i}"
+                e_json, e_npz = event.to_checkpoint(evt_prefix)
                 evt_jsons.append(e_json)
                 npz_data.update(e_npz)
             json_data["events"] = evt_jsons
@@ -576,18 +576,18 @@ class Block:
         return json_data, npz_data
 
 
-    def load_checkpoint(self, json_data, npz):
+    def load_checkpoint(self, prefix, json_data, npz):
         """Restore block state from checkpoint.
 
         Parameters
         ----------
+        prefix : str
+            key prefix for NPZ arrays (assigned by simulation)
         json_data : dict
             block metadata from checkpoint JSON
         npz : dict-like
             numpy arrays from checkpoint NPZ
         """
-        prefix = json_data["id"]
-
         #verify type
         if json_data["type"] != self.__class__.__name__:
             raise ValueError(
@@ -611,8 +611,8 @@ class Block:
 
         #restore internal events
         if self.events and "events" in json_data:
-            for event, evt_data in zip(self.events, json_data["events"]):
-                event.load_checkpoint(evt_data, npz)
+            for i, (event, evt_data) in enumerate(zip(self.events, json_data["events"])):
+                event.load_checkpoint(f"{prefix}/evt_{i}", evt_data, npz)
 
 
     # methods for block output and state updates ----------------------------------------
