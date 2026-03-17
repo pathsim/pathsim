@@ -10,6 +10,9 @@
 
 # IMPORTS ===============================================================================
 
+import json
+import warnings
+
 import numpy as np
 
 import time
@@ -374,8 +377,6 @@ class Simulation:
         recordings : bool
             include scope/spectrum recording data (default: False)
         """
-        import json
-
         #strip extension if provided
         if path.endswith('.json') or path.endswith('.npz'):
             path = path.rsplit('.', 1)[0]
@@ -438,9 +439,6 @@ class Simulation:
         path : str
             base path without extension
         """
-        import json
-        import warnings
-
         #strip extension if provided
         if path.endswith('.json') or path.endswith('.npz'):
             path = path.rsplit('.', 1)[0]
