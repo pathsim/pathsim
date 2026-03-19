@@ -181,14 +181,12 @@ class Subsystem(Block):
         #internal algebraic loop solvers -> initialized later
         self.boosters = None
 
-        #internal connecions (ordered list with shadow set for O(1) lookup)
+        #internal connecions
         self.connections = list(connections) if connections else []
-        self._conn_set   = set(self.connections)
 
         #collect and organize internal blocks
-        self.blocks     = []
-        self._block_set = set()
-        self.interface  = None
+        self.blocks    = []
+        self.interface = None
 
         if blocks:
             for block in blocks:
@@ -202,7 +200,6 @@ class Subsystem(Block):
                 else:
                     #regular blocks
                     self.blocks.append(block)
-                    self._block_set.add(block)
 
         #check if interface is defined
         if self.interface is None:
@@ -253,7 +250,7 @@ class Subsystem(Block):
         -------
         bool
         """
-        return other in self._block_set or other in self._conn_set
+        return other in self.blocks or other in self.connections
 
 
     # adding and removing system components ---------------------------------------------------
@@ -268,7 +265,7 @@ class Subsystem(Block):
         block : Block
             block to add to the subsystem
         """
-        if block in self._block_set:
+        if block in self.blocks:
             raise ValueError(f"block {block} already part of subsystem")
 
         #initialize solver if available
@@ -278,7 +275,6 @@ class Subsystem(Block):
                 self._blocks_dyn.append(block)
 
         self.blocks.append(block)
-        self._block_set.add(block)
 
         if self.graph:
             self._graph_dirty = True
@@ -294,11 +290,10 @@ class Subsystem(Block):
         block : Block
             block to remove from the subsystem
         """
-        if block not in self._block_set:
+        if block not in self.blocks:
             raise ValueError(f"block {block} not part of subsystem")
 
         self.blocks.remove(block)
-        self._block_set.discard(block)
 
         #remove from dynamic list
         if hasattr(self, '_blocks_dyn') and block in self._blocks_dyn:
@@ -318,11 +313,10 @@ class Subsystem(Block):
         connection : Connection
             connection to add to the subsystem
         """
-        if connection in self._conn_set:
+        if connection in self.connections:
             raise ValueError(f"{connection} already part of subsystem")
 
         self.connections.append(connection)
-        self._conn_set.add(connection)
 
         if self.graph:
             self._graph_dirty = True
@@ -338,11 +332,10 @@ class Subsystem(Block):
         connection : Connection
             connection to remove from the subsystem
         """
-        if connection not in self._conn_set:
+        if connection not in self.connections:
             raise ValueError(f"{connection} not part of subsystem")
 
         self.connections.remove(connection)
-        self._conn_set.discard(connection)
 
         if self.graph:
             self._graph_dirty = True
