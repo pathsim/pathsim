@@ -10,6 +10,9 @@
 
 # IMPORTS ===============================================================================
 
+import json
+import warnings
+
 import numpy as np
 
 import time
@@ -153,10 +156,10 @@ class Simulation:
         get attributes and access to intermediate evaluation stages
     logger : logging.Logger
         global simulation logger
-    _blocks_dyn : set[Block]
-        blocks with internal ´Solver´ instances (stateful) 
-    _blocks_evt : set[Block]
-        blocks with internal events (discrete time, eventful) 
+    _blocks_dyn : list[Block]
+        blocks with internal ´Solver´ instances (stateful)
+    _blocks_evt : list[Block]
+        blocks with internal events (discrete time, eventful)
     _active : bool
         flag for setting the simulation as active, used for interrupts
     """
@@ -177,9 +180,9 @@ class Simulation:
         ):
 
         #system definition
-        self.blocks      = set()
-        self.connections = set()
-        self.events      = set()
+        self.blocks      = []
+        self.connections = []
+        self.events      = []
 
         #simulation timestep and bounds
         self.dt     = dt
@@ -215,10 +218,10 @@ class Simulation:
         self.time = 0.0
 
         #collection of blocks with internal ODE solvers
-        self._blocks_dyn = set()
+        self._blocks_dyn = []
 
         #collection of blocks with internal events
-        self._blocks_evt = set()
+        self._blocks_evt = []
 
         #flag for setting the simulation active
         self._active = True
@@ -269,8 +272,8 @@ class Simulation:
         bool
         """
         return (
-            other in self.blocks or 
-            other in self.connections or 
+            other in self.blocks or
+            other in self.connections or
             other in self.events
             )
 
@@ -331,6 +334,171 @@ class Simulation:
             if block: block.plot(*args, **kwargs)
 
 
+    # checkpoint methods ----------------------------------------------------------
+
+    @staticmethod
+    def _checkpoint_key(type_name, type_counts):
+        """Generate a deterministic checkpoint key from block/event type
+        and occurrence index (e.g. 'Integrator_0', 'Scope_1').
+
+        Parameters
+        ----------
+        type_name : str
+            class name of the block or event
+        type_counts : dict
+            running counter per type name, mutated in place
+
+        Returns
+        -------
+        key : str
+            deterministic checkpoint key
+        """
+        idx = type_counts.get(type_name, 0)
+        type_counts[type_name] = idx + 1
+        return f"{type_name}_{idx}"
+
+
+    def save_checkpoint(self, path, recordings=True):
+        """Save simulation state to checkpoint files (JSON + NPZ).
+
+        Creates two files: {path}.json (structure/metadata) and
+        {path}.npz (numerical data). Blocks and events are keyed by
+        type and insertion order for deterministic cross-instance matching.
+
+        Parameters
+        ----------
+        path : str
+            base path without extension
+        recordings : bool
+            include scope/spectrum recording data (default: True)
+        """
+        #strip extension if provided
+        if path.endswith('.json') or path.endswith('.npz'):
+            path = path.rsplit('.', 1)[0]
+
+        #simulation metadata
+        checkpoint = {
+            "version": "1.0.0",
+            "pathsim_version": __version__,
+            "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "simulation": {
+                "time": self.time,
+                "dt": self.dt,
+                "dt_min": self.dt_min,
+                "dt_max": self.dt_max,
+                "solver": self.Solver.__name__,
+                "tolerance_fpi": self.tolerance_fpi,
+                "iterations_max": self.iterations_max,
+            },
+            "blocks": [],
+            "events": [],
+        }
+
+        npz_data = {}
+
+        #checkpoint all blocks (keyed by type + insertion index)
+        type_counts = {}
+        for block in self.blocks:
+            key = self._checkpoint_key(block.__class__.__name__, type_counts)
+            b_json, b_npz = block.to_checkpoint(key, recordings=recordings)
+            b_json["_key"] = key
+            checkpoint["blocks"].append(b_json)
+            npz_data.update(b_npz)
+
+        #checkpoint external events (keyed by type + insertion index)
+        type_counts = {}
+        for event in self.events:
+            key = self._checkpoint_key(event.__class__.__name__, type_counts)
+            e_json, e_npz = event.to_checkpoint(key)
+            e_json["_key"] = key
+            checkpoint["events"].append(e_json)
+            npz_data.update(e_npz)
+
+        #write files
+        with open(f"{path}.json", "w", encoding="utf-8") as f:
+            json.dump(checkpoint, f, indent=2, ensure_ascii=False)
+
+        np.savez(f"{path}.npz", **npz_data)
+
+
+    def load_checkpoint(self, path):
+        """Load simulation state from checkpoint files (JSON + NPZ).
+
+        Restores simulation time and all block/event states from a
+        previously saved checkpoint. Matching is based on block/event
+        type and insertion order, so the simulation must be constructed
+        with the same block types in the same order.
+
+        Parameters
+        ----------
+        path : str
+            base path without extension
+        """
+        #strip extension if provided
+        if path.endswith('.json') or path.endswith('.npz'):
+            path = path.rsplit('.', 1)[0]
+
+        #read files
+        with open(f"{path}.json", "r", encoding="utf-8") as f:
+            checkpoint = json.load(f)
+
+        npz = np.load(f"{path}.npz", allow_pickle=False)
+
+        try:
+            #version check
+            cp_version = checkpoint.get("pathsim_version", "unknown")
+            if cp_version != __version__:
+                warnings.warn(
+                    f"Checkpoint was saved with PathSim {cp_version}, "
+                    f"current version is {__version__}"
+                )
+
+            #restore simulation state
+            sim_data = checkpoint["simulation"]
+            self.time = sim_data["time"]
+            self.dt = sim_data["dt"]
+            self.dt_min = sim_data["dt_min"]
+            self.dt_max = sim_data["dt_max"]
+
+            #solver type check
+            if sim_data["solver"] != self.Solver.__name__:
+                warnings.warn(
+                    f"Checkpoint solver '{sim_data['solver']}' differs from "
+                    f"current solver '{self.Solver.__name__}'"
+                )
+
+            #index checkpoint blocks by key
+            block_data = {b["_key"]: b for b in checkpoint.get("blocks", [])}
+
+            #restore blocks by type + insertion order
+            type_counts = {}
+            for block in self.blocks:
+                key = self._checkpoint_key(block.__class__.__name__, type_counts)
+                if key in block_data:
+                    block.load_checkpoint(key, block_data[key], npz)
+                else:
+                    warnings.warn(
+                        f"Block '{key}' not found in checkpoint"
+                    )
+
+            #index checkpoint events by key
+            event_data = {e["_key"]: e for e in checkpoint.get("events", [])}
+
+            #restore external events by type + insertion order
+            type_counts = {}
+            for event in self.events:
+                key = self._checkpoint_key(event.__class__.__name__, type_counts)
+                if key in event_data:
+                    event.load_checkpoint(key, event_data[key], npz)
+                else:
+                    warnings.warn(
+                        f"Event '{key}' not found in checkpoint"
+                    )
+
+        finally:
+            npz.close()
+
+
     # adding system components ----------------------------------------------------
 
     def add_block(self, block):
@@ -356,14 +524,14 @@ class Simulation:
 
         #add to dynamic list if solver was initialized
         if block.engine:
-            self._blocks_dyn.add(block)
+            self._blocks_dyn.append(block)
 
         #add to eventful list if internal events
         if block.events:
-            self._blocks_evt.add(block)
+            self._blocks_evt.append(block)
 
         #add block to global blocklist
-        self.blocks.add(block)
+        self.blocks.append(block)
 
         #mark graph for rebuild
         if self.graph:
@@ -389,13 +557,15 @@ class Simulation:
             raise ValueError(_msg)
 
         #remove from global blocklist
-        self.blocks.discard(block)
+        self.blocks.remove(block)
 
         #remove from dynamic list
-        self._blocks_dyn.discard(block)
+        if block in self._blocks_dyn:
+            self._blocks_dyn.remove(block)
 
         #remove from eventful list
-        self._blocks_evt.discard(block)
+        if block in self._blocks_evt:
+            self._blocks_evt.remove(block)
 
         #mark graph for rebuild
         if self.graph:
@@ -421,7 +591,7 @@ class Simulation:
             raise ValueError(_msg)
 
         #add connection to global connection list
-        self.connections.add(connection)
+        self.connections.append(connection)
 
         #mark graph for rebuild
         if self.graph:
@@ -447,7 +617,7 @@ class Simulation:
             raise ValueError(_msg)
 
         #remove from global connection list
-        self.connections.discard(connection)
+        self.connections.remove(connection)
 
         #mark graph for rebuild
         if self.graph:
@@ -472,7 +642,7 @@ class Simulation:
             raise ValueError(_msg)
 
         #add event to global event list
-        self.events.add(event)
+        self.events.append(event)
 
 
     def remove_event(self, event):
@@ -493,7 +663,7 @@ class Simulation:
             raise ValueError(_msg)
 
         #remove from global event list
-        self.events.discard(event)
+        self.events.remove(event)
 
 
     # system assembly -------------------------------------------------------------
@@ -551,10 +721,11 @@ class Simulation:
             conn_blocks.update(conn.get_blocks())
 
         # Check subset actively managed
-        if not conn_blocks.issubset(self.blocks):
-            self.logger.warning(
-                f"{blk} in 'connections' but not in 'blocks'!"
-                )
+        for blk in conn_blocks:
+            if blk not in self.blocks:
+                self.logger.warning(
+                    f"{blk} in 'connections' but not in 'blocks'!"
+                    )
 
 
     # solver management -----------------------------------------------------------
@@ -585,13 +756,13 @@ class Simulation:
         self.engine = self.Solver()
 
         #iterate all blocks and set integration engines with tolerances
-        self._blocks_dyn = set()
+        self._blocks_dyn = []
         for block in self.blocks:
             block.set_solver(self.Solver, self.engine, **self.solver_kwargs)
-            
+
             #add dynamic blocks to list
             if block.engine:
-                self._blocks_dyn.add(block)
+                self._blocks_dyn.append(block)
 
         #logging message
         self.logger.info(

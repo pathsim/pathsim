@@ -182,26 +182,24 @@ class Subsystem(Block):
         self.boosters = None
 
         #internal connecions
-        self.connections = set() 
-        if connections:
-            self.connections.update(connections)
-        
+        self.connections = list(connections) if connections else []
+
         #collect and organize internal blocks
-        self.blocks = set()
+        self.blocks    = []
         self.interface = None
 
         if blocks:
             for block in blocks:
-                if isinstance(block, Interface): 
-                    
+                if isinstance(block, Interface):
+
                     if self.interface is not None:
                         #interface block is already defined
                         raise ValueError("Subsystem can only have one 'Interface' block!")
-                    
+
                     self.interface = block
-                else: 
+                else:
                     #regular blocks
-                    self.blocks.add(block)
+                    self.blocks.append(block)
 
         #check if interface is defined
         if self.interface is None:
@@ -276,7 +274,7 @@ class Subsystem(Block):
             if block.engine:
                 self._blocks_dyn.append(block)
 
-        self.blocks.add(block)
+        self.blocks.append(block)
 
         if self.graph:
             self._graph_dirty = True
@@ -295,7 +293,7 @@ class Subsystem(Block):
         if block not in self.blocks:
             raise ValueError(f"block {block} not part of subsystem")
 
-        self.blocks.discard(block)
+        self.blocks.remove(block)
 
         #remove from dynamic list
         if hasattr(self, '_blocks_dyn') and block in self._blocks_dyn:
@@ -318,7 +316,7 @@ class Subsystem(Block):
         if connection in self.connections:
             raise ValueError(f"{connection} already part of subsystem")
 
-        self.connections.add(connection)
+        self.connections.append(connection)
 
         if self.graph:
             self._graph_dirty = True
@@ -337,7 +335,7 @@ class Subsystem(Block):
         if connection not in self.connections:
             raise ValueError(f"{connection} not part of subsystem")
 
-        self.connections.discard(connection)
+        self.connections.remove(connection)
 
         if self.graph:
             self._graph_dirty = True
@@ -386,7 +384,7 @@ class Subsystem(Block):
         for block in self.blocks:
             block.inputs.reset()
 
-        self.graph = Graph({*self.blocks, self.interface}, self.connections)
+        self.graph = Graph([*self.blocks, self.interface], self.connections)
         self._graph_dirty = False
 
         #create boosters for loop closing connections
@@ -455,6 +453,106 @@ class Subsystem(Block):
         #reset internal blocks
         for block in self.blocks:
             block.reset()
+
+
+    @staticmethod
+    def _checkpoint_key(type_name, type_counts):
+        """Generate a deterministic checkpoint key from block/event type
+        and occurrence index (e.g. 'Integrator_0', 'Scope_1').
+        """
+        idx = type_counts.get(type_name, 0)
+        type_counts[type_name] = idx + 1
+        return f"{type_name}_{idx}"
+
+
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize subsystem state by recursively checkpointing internal blocks.
+
+        Parameters
+        ----------
+        prefix : str
+            key prefix for NPZ arrays (assigned by simulation)
+        recordings : bool
+            include recording data (for Scope blocks)
+
+        Returns
+        -------
+        json_data : dict
+            JSON-serializable metadata
+        npz_data : dict
+            numpy arrays keyed by path
+        """
+        json_data = {
+            "type": self.__class__.__name__,
+            "active": self._active,
+            "blocks": [],
+        }
+        npz_data = {}
+
+        #checkpoint interface block
+        if_json, if_npz = self.interface.to_checkpoint(f"{prefix}/interface", recordings=recordings)
+        json_data["interface"] = if_json
+        npz_data.update(if_npz)
+
+        #checkpoint internal blocks by type + insertion order
+        type_counts = {}
+        for block in self.blocks:
+            key = f"{prefix}/{self._checkpoint_key(block.__class__.__name__, type_counts)}"
+            b_json, b_npz = block.to_checkpoint(key, recordings=recordings)
+            b_json["_key"] = key
+            json_data["blocks"].append(b_json)
+            npz_data.update(b_npz)
+
+        #checkpoint subsystem-level events
+        if self._events:
+            evt_jsons = []
+            for i, event in enumerate(self._events):
+                evt_prefix = f"{prefix}/evt_{i}"
+                e_json, e_npz = event.to_checkpoint(evt_prefix)
+                evt_jsons.append(e_json)
+                npz_data.update(e_npz)
+            json_data["events"] = evt_jsons
+
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore subsystem state by recursively loading internal blocks.
+
+        Parameters
+        ----------
+        prefix : str
+            key prefix for NPZ arrays (assigned by simulation)
+        json_data : dict
+            subsystem metadata from checkpoint JSON
+        npz : dict-like
+            numpy arrays from checkpoint NPZ
+        """
+        #verify type
+        if json_data["type"] != self.__class__.__name__:
+            raise ValueError(
+                f"Checkpoint type mismatch: expected '{self.__class__.__name__}', "
+                f"got '{json_data['type']}'"
+            )
+
+        self._active = json_data["active"]
+
+        #restore interface block
+        if "interface" in json_data:
+            self.interface.load_checkpoint(f"{prefix}/interface", json_data["interface"], npz)
+
+        #restore internal blocks by type + insertion order
+        block_data = {b["_key"]: b for b in json_data.get("blocks", [])}
+        type_counts = {}
+        for block in self.blocks:
+            key = f"{prefix}/{self._checkpoint_key(block.__class__.__name__, type_counts)}"
+            if key in block_data:
+                block.load_checkpoint(key, block_data[key], npz)
+
+        #restore subsystem-level events
+        if self._events and "events" in json_data:
+            for i, (event, evt_data) in enumerate(zip(self._events, json_data["events"])):
+                event.load_checkpoint(f"{prefix}/evt_{i}", evt_data, npz)
 
 
     def on(self):

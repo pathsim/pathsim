@@ -448,13 +448,44 @@ class Scope(Block):
                 wrt.writerow(sample)
 
 
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize Scope state including optional recording data."""
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
+
+        json_data["_incremental_idx"] = self._incremental_idx
+        if hasattr(self, '_sample_next_timestep'):
+            json_data["_sample_next_timestep"] = self._sample_next_timestep
+
+        if recordings and self.recording_time:
+            npz_data[f"{prefix}/recording_time"] = np.array(self.recording_time)
+            npz_data[f"{prefix}/recording_data"] = np.array(self.recording_data)
+
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore Scope state including optional recording data."""
+        super().load_checkpoint(prefix, json_data, npz)
+
+        self._incremental_idx = json_data.get("_incremental_idx", 0)
+        if hasattr(self, '_sample_next_timestep'):
+            self._sample_next_timestep = json_data.get("_sample_next_timestep", False)
+
+        #restore recordings if present
+        rt_key = f"{prefix}/recording_time"
+        rd_key = f"{prefix}/recording_data"
+        if rt_key in npz and rd_key in npz:
+            self.recording_time = npz[rt_key].tolist()
+            self.recording_data = [row for row in npz[rd_key]]
+
+
     def update(self, t):
-        """update system equation for fixed point loop, 
+        """update system equation for fixed point loop,
         here just setting the outputs
-    
+
         Note
         ----
-        Scope has no passthrough, so the 'update' method 
+        Scope has no passthrough, so the 'update' method
         is optimized for this case (does nothing)       
 
         Parameters
