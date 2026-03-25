@@ -40,6 +40,8 @@ html_logo = 'logos/pathsim_logo.png'
 html_favicon = "logos/pathsim_icon.png"
 html_title = "PathSim Documentation"
 html_css_files = ['custom.css']  # Add custom CSS for link previews and styling
+html_js_files = ['redirect.js']  # Auto-redirect RTD visitors to docs.pathsim.org
+html_baseurl = 'https://docs.pathsim.org/'  # Canonical URL for SEO
 
 html_theme_options = {
     "light_css_variables": {
