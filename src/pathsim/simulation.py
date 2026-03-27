@@ -37,6 +37,7 @@ from .utils.analysis import Timer
 from .utils.deprecation import deprecated
 from .utils.portreference import PortReference
 from .utils.progresstracker import ProgressTracker
+from .utils.diagnostics import Diagnostics, ConvergenceTracker, StepTracker
 from .utils.logger import LoggerManager
 
 from .solvers import SSPRK22, SteadyState
@@ -165,17 +166,18 @@ class Simulation:
     """
 
     def __init__(
-        self, 
-        blocks=None, 
-        connections=None, 
+        self,
+        blocks=None,
+        connections=None,
         events=None,
-        dt=SIM_TIMESTEP, 
-        dt_min=SIM_TIMESTEP_MIN, 
-        dt_max=SIM_TIMESTEP_MAX, 
-        Solver=SSPRK22, 
-        tolerance_fpi=SIM_TOLERANCE_FPI, 
-        iterations_max=SIM_ITERATIONS_MAX, 
+        dt=SIM_TIMESTEP,
+        dt_min=SIM_TIMESTEP_MIN,
+        dt_max=SIM_TIMESTEP_MAX,
+        Solver=SSPRK22,
+        tolerance_fpi=SIM_TOLERANCE_FPI,
+        iterations_max=SIM_ITERATIONS_MAX,
         log=LOG_ENABLE,
+        diagnostics=False,
         **solver_kwargs
         ):
 
@@ -225,6 +227,17 @@ class Simulation:
 
         #flag for setting the simulation active
         self._active = True
+
+        #convergence trackers for the three solver loops
+        self._loop_tracker = ConvergenceTracker()
+        self._solve_tracker = ConvergenceTracker()
+        self._step_tracker = StepTracker()
+
+        #diagnostics snapshot (None when disabled)
+        self.diagnostics = Diagnostics() if diagnostics else None
+
+        #diagnostics history (list of snapshots per timestep)
+        self._diagnostics_history = [] if diagnostics == "history" else None
 
         #initialize logging 
         logger_mgr = LoggerManager(
@@ -815,6 +828,15 @@ class Simulation:
         for event in self.events:
             event.reset()
 
+        #reset convergence trackers and diagnostics
+        self._loop_tracker.reset()
+        self._solve_tracker.reset()
+        self._step_tracker.reset()
+        if self.diagnostics is not None:
+            self.diagnostics = Diagnostics()
+        if self._diagnostics_history is not None:
+            self._diagnostics_history.clear()
+
         #evaluate system function
         self._update(self.time)
 
@@ -1026,19 +1048,20 @@ class Simulation:
                     if connection: connection.update()
 
             #step boosters of loop closing connections
-            max_err = 0.0
+            self._loop_tracker.begin_iteration()
             for con_booster in self.boosters:
-                err = con_booster.update()
-                if err > max_err:
-                    max_err = err
-                       
+                self._loop_tracker.record(con_booster, con_booster.update())
+
             #check convergence
-            if max_err <= self.tolerance_fpi:
+            if self._loop_tracker.converged(self.tolerance_fpi):
+                self._loop_tracker.iterations = iteration
                 return
 
-        #not converged -> error
-        _msg = "algebraic loop not converged (iters: {}, err: {})".format(
-            self.iterations_max, max_err
+        #not converged -> error with per-connection details
+        self._loop_tracker.iterations = self.iterations_max
+        details = self._loop_tracker.details(lambda b: str(b.connection))
+        _msg = "algebraic loop not converged (iters: {}, err: {:.2e})\n{}".format(
+            self.iterations_max, self._loop_tracker.max_error, "\n".join(details)
             )
         self.logger.error(_msg)
         raise RuntimeError(_msg)
@@ -1080,26 +1103,21 @@ class Simulation:
 
             #evaluate system equation (this is a fixed point loop)
             self._update(t)
-            total_evals += 1            
+            total_evals += 1
 
             #advance solution of implicit solver
-            max_error = 0.0
+            self._solve_tracker.begin_iteration()
             for block in self._blocks_dyn:
-
-                #skip inactive blocks
-                if not block: 
+                if not block:
                     continue
-                
-                #advance solution (internal optimizer)
-                error = block.solve(t, dt)
-                if error > max_error:
-                    max_error = error
+                self._solve_tracker.record(block, block.solve(t, dt))
 
-            #check for convergence (only error)
-            if max_error <= self.tolerance_fpi:
-                return True, total_evals, it+1
+            #check for convergence
+            if self._solve_tracker.converged(self.tolerance_fpi):
+                self._solve_tracker.iterations = it + 1
+                return True, total_evals, it + 1
 
-        #not converged in 'self.iterations_max' steps
+        self._solve_tracker.iterations = self.iterations_max
         return False, total_evals, self.iterations_max
 
 
@@ -1156,8 +1174,9 @@ class Simulation:
 
         #catch non convergence
         if not success:
-            _msg = "STEADYSTATE -> FINISHED (success: {}, evals: {}, iters: {}, runtime: {})".format(
-                success, evals, iters, T)
+            details = self._solve_tracker.details(lambda b: b.__class__.__name__)
+            _msg = "STEADYSTATE -> FAILED (evals: {}, iters: {}, runtime: {})\n{}".format(
+                evals, iters, T, "\n".join(details))
             self.logger.error(_msg)
             raise RuntimeError(_msg)
 
@@ -1276,32 +1295,14 @@ class Simulation:
             rescale factor for timestep
         """
 
-        #initial timestep rescale and error estimate
-        success, max_error_norm, min_scale = True, 0.0, None
+        self._step_tracker.reset()
 
-        #step blocks and get error estimates if available
         for block in self._blocks_dyn:
-
-            #skip inactive blocks
             if not block: continue
-
-            #step the block
             suc, err_norm, scl = block.step(t, dt)
+            self._step_tracker.record(block, suc, err_norm, scl)
 
-            #check solver stepping success
-            if not suc:
-                success = False
-
-            #update error tracking
-            if err_norm > max_error_norm:
-                max_error_norm = err_norm
-
-            #track minimum relevant scale directly (avoids list allocation)
-            if scl is not None:
-                if min_scale is None or scl < min_scale:
-                    min_scale = scl
-
-        return success, max_error_norm, min_scale if min_scale is not None else 1.0
+        return self._step_tracker.success, self._step_tracker.max_error, self._step_tracker.scale
 
 
     # timestepping ----------------------------------------------------------------
@@ -1469,10 +1470,19 @@ class Simulation:
                     total_evals += evals
                     total_solver_its += solver_its
 
-                    #adaptive implicit: revert if solver didn't converge
-                    if not success and is_adaptive:
-                        self._revert(self.time)
-                        return False, 0.0, 0.5, total_evals + 1, total_solver_its
+                    #implicit solver didn't converge
+                    if not success:
+                        details = self._solve_tracker.details(lambda b: b.__class__.__name__)
+                        if is_adaptive:
+                            self.logger.warning(
+                                "implicit solver not converged, reverting step at t={:.6f}\n{}".format(
+                                    time_stage, "\n".join(details)))
+                            self._revert(self.time)
+                            return False, 0.0, 0.5, total_evals + 1, total_solver_its
+                        else:
+                            self.logger.warning(
+                                "implicit solver not converged at t={:.6f} (iters: {})\n{}".format(
+                                    time_stage, solver_its, "\n".join(details)))
                 else:
                     #explicit: evaluate system equation
                     self._update(time_stage)
@@ -1510,6 +1520,19 @@ class Simulation:
                 event.resolve(self.time + ratio * dt)
                 self._update(time_dt)
                 total_evals += 1
+
+        #update diagnostics snapshot for this timestep
+        if self.diagnostics is not None:
+            self.diagnostics = Diagnostics(
+                time=time_dt,
+                loop_residuals=dict(self._loop_tracker.errors),
+                loop_iterations=self._loop_tracker.iterations,
+                solve_residuals=dict(self._solve_tracker.errors),
+                solve_iterations=self._solve_tracker.iterations,
+                step_errors=dict(self._step_tracker.errors),
+            )
+            if self._diagnostics_history is not None:
+                self._diagnostics_history.append(self.diagnostics)
 
         #sample data after successful timestep
         self._sample(time_dt, dt)
