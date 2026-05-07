@@ -17,8 +17,7 @@ from pathsim.blocks.lti import TransferFunctionNumDen, TransferFunctionZPG
 from pathsim.blocks.filters import ButterworthLowpassFilter
 from pathsim.blocks.sources import SinusoidalSource, ClockSource
 from pathsim.blocks.delay import Delay
-from pathsim.blocks.fir import FIR
-from pathsim.blocks.samplehold import SampleHold
+from pathsim.blocks.discrete import FIR, SampleHold
 
 from pathsim.utils.mutable import mutable
 
