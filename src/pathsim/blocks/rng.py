@@ -96,6 +96,21 @@ class RandomNumberGenerator(Block):
             self._sample = np.random.rand()
 
 
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize RNG state including current sample."""
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
+        if self.sampling_period is None:
+            json_data["_sample"] = float(self._sample)
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore RNG state including current sample."""
+        super().load_checkpoint(prefix, json_data, npz)
+        if self.sampling_period is None:
+            self._sample = json_data.get("_sample", 0.0)
+
+
     def __len__(self):
         """Essentially a source-like block without passthrough"""
         return 0

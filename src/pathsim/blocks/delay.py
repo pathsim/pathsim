@@ -142,6 +142,39 @@ class Delay(Block):
             self._ring.extend([0.0] * self._n)
 
 
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize Delay state including buffer data."""
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
+
+        json_data["sampling_period"] = self.sampling_period
+
+        if self.sampling_period is None:
+            #continuous mode: adaptive buffer
+            npz_data.update(self._buffer.to_checkpoint(f"{prefix}/buffer"))
+        else:
+            #discrete mode: ring buffer
+            npz_data[f"{prefix}/ring"] = np.array(list(self._ring))
+            json_data["_sample_next_timestep"] = self._sample_next_timestep
+
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore Delay state including buffer data."""
+        super().load_checkpoint(prefix, json_data, npz)
+
+        if self.sampling_period is None:
+            #continuous mode
+            self._buffer.load_checkpoint(npz, f"{prefix}/buffer")
+        else:
+            #discrete mode
+            ring_key = f"{prefix}/ring"
+            if ring_key in npz:
+                self._ring.clear()
+                self._ring.extend(npz[ring_key].tolist())
+            self._sample_next_timestep = json_data.get("_sample_next_timestep", False)
+
+
     def update(self, t):
         """Evaluation of the buffer at different times
         via interpolation (continuous) or ring buffer lookup (discrete).

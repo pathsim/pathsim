@@ -230,6 +230,36 @@ class FIR(Block):
         self._buffer = deque([0.0] * n, maxlen=n)
 
 
+    def to_checkpoint(self, prefix, recordings=False):
+        """Serialize FIR state including input buffer."""
+        json_data, npz_data = super().to_checkpoint(prefix, recordings=recordings)
+        items = [np.atleast_1d(np.asarray(b, dtype=float)) for b in self._buffer]
+        width = max((arr.size for arr in items), default=1)
+        arr = np.zeros((len(items), width))
+        for i, item in enumerate(items):
+            arr[i, :item.size] = item
+        npz_data[f"{prefix}/fir_buffer"] = arr
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, prefix, json_data, npz):
+        """Restore FIR state including input buffer."""
+        super().load_checkpoint(prefix, json_data, npz)
+        key = f"{prefix}/fir_buffer"
+        if key in npz:
+            data = np.asarray(npz[key])
+            self._buffer.clear()
+            if data.ndim == 1:
+                #legacy scalar-only format
+                self._buffer.extend(data.tolist())
+            elif data.shape[1] == 1:
+                #single-channel: store as scalars for symmetry with init
+                self._buffer.extend(float(v) for v in data[:, 0])
+            else:
+                #vector channels: store as arrays
+                self._buffer.extend(row.copy() for row in data)
+
+
 # DISCRETE INTEGRATOR ===================================================================
 
 @mutable

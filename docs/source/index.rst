@@ -8,11 +8,11 @@ PathSim
 
    <div style="background: #0070c0; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem; color: white;">
       <p style="margin: 0 0 0.5rem 0; font-weight: 600; font-size: 1.1rem;">
-         📢 We've moved to a new documentation site!
+         📢 Redirecting to the new documentation site...
       </p>
       <p style="margin: 0; opacity: 0.95;">
-         This legacy documentation will remain available but is no longer updated.
-         Visit <a href="https://docs.pathsim.org" style="color: white; font-weight: 600;">docs.pathsim.org</a> for the latest docs with interactive examples, and <a href="https://pathsim.org" style="color: white; font-weight: 600;">pathsim.org</a> for the new homepage.
+         This legacy documentation is no longer updated. You will be redirected to
+         <a href="https://docs.pathsim.org" style="color: white; font-weight: 600;">docs.pathsim.org</a> in a few seconds.
       </p>
    </div>
 
