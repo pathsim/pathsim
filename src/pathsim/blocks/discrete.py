@@ -546,6 +546,8 @@ class TappedDelay(Block):
         internal scheduled event for periodic shift
     """
 
+    input_port_labels = {"in": 0}
+
     def __init__(self, N=2, T=1.0, tau=0.0):
         super().__init__()
 
