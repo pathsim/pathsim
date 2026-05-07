@@ -141,7 +141,7 @@ class TestConnection(unittest.TestCase):
 
 
     def test_on_off_bool(self):
-        
+
         B1, B2 = Block(), Block()
 
         #default
@@ -157,6 +157,62 @@ class TestConnection(unittest.TestCase):
         #activate
         C.on()
         self.assertTrue(C)
+
+
+    def test_resolve_ports_grows_input_register(self):
+        """resolve_ports must size the target input register so blocks
+        accessing inputs by position before any connection.update() runs
+        (e.g. inside an algebraic loop) see the correct number of slots.
+        """
+        B1, B2 = Block(), Block()
+
+        #fresh block has size-1 input register from Block.__init__
+        self.assertEqual(len(B2.inputs), 1)
+
+        C = Connection(B1[2], B2[3])
+
+        #ports validated but lazy resize not yet triggered
+        self.assertEqual(len(B2.inputs), 1)
+        self.assertEqual(len(B1.outputs), 1)
+
+        C.resolve_ports()
+
+        #both registers must accommodate the highest port index
+        self.assertEqual(len(B2.inputs), 4)
+        self.assertEqual(len(B1.outputs), 3)
+
+        #new slots are zero-initialised
+        self.assertEqual(B2.inputs[3], 0.0)
+
+
+    def test_resolve_ports_is_idempotent(self):
+        """Repeated calls must not change register size or contents."""
+        B1, B2 = Block(), Block()
+        C = Connection(B1[5], B2[7])
+
+        C.resolve_ports()
+        size_in = len(B2.inputs)
+        size_out = len(B1.outputs)
+
+        #seed a value so we can detect data loss on a second resolve
+        B2.inputs[7] = 42.0
+
+        C.resolve_ports()
+        self.assertEqual(len(B2.inputs), size_in)
+        self.assertEqual(len(B1.outputs), size_out)
+        self.assertEqual(B2.inputs[7], 42.0)
+
+
+    def test_resolve_ports_multi_target(self):
+        """All targets must be resolved, not just the first."""
+        B1, B2, B3 = Block(), Block(), Block()
+        C = Connection(B1[1], B2[4], B3[6])
+
+        C.resolve_ports()
+
+        self.assertEqual(len(B1.outputs), 2)
+        self.assertEqual(len(B2.inputs), 5)
+        self.assertEqual(len(B3.inputs), 7)
 
 
 

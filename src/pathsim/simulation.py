@@ -695,6 +695,11 @@ class Simulation:
             self.graph = Graph(self.blocks, self.connections)
         self._graph_dirty = False
 
+        #resolve all port indices so input/output registers are sized
+        #before any block.update() runs (see Connection.resolve_ports)
+        for con in self.connections:
+            con.resolve_ports()
+
         #create boosters for loop closing connections
         if self.graph.has_loops:
             self.boosters = [

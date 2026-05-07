@@ -249,6 +249,30 @@ class Connection:
             self.source.to(trg)
 
 
+    def resolve_ports(self):
+        """Eagerly resolve source and target port indices, growing the
+        underlying ``Register`` instances to their final size.
+
+        Normally registers grow lazily on the first ``connection.update()``
+        via ``PortReference._get_input_indices``. In the DAG case that is
+        fine: the source-side connection fires before the target block's
+        ``update``, so by the time the block reads its inputs, the
+        register has the right size. Inside an algebraic loop the order
+        is reversed (``block.update()`` first, then ``connection.update()``
+        in the same iteration), so the first iteration sees a register
+        still at the ``Block.__init__`` default size and any block that
+        accesses inputs by position (e.g. ``Function`` splatting into a
+        multi-arg callable) raises ``TypeError``.
+
+        Calling ``resolve_ports`` once during graph assembly closes that
+        gap. Idempotent. New register slots are zero-initialised through
+        ``np.zeros`` in ``Register.resize``.
+        """
+        self.source._get_output_indices()
+        for trg in self.targets:
+            trg._get_input_indices()
+
+
 @deprecated(version="1.0.0")
 class Duplex(Connection):
     """Extension of the 'Connection' class, that defines bidirectional
