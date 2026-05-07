@@ -4,7 +4,7 @@ from .multiplier import *
 from .divider import *
 from .converters import *
 from .comparator import *
-from .samplehold import *
+from .discrete import *
 from .amplifier import *
 from .function import *
 from .spectrum import *
@@ -27,6 +27,5 @@ from .ctrl import *
 from .lti import *
 from .ode import *
 from .rng import *
-from .fir import *
 from .fmu import *
 from .rf import *

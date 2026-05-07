@@ -177,6 +177,41 @@ class TestPowProd(unittest.TestCase):
         for t in range(1, 10): self.assertTrue(np.allclose(*E.check_MIMO(t)))
 
 
+class TestPolynomial(unittest.TestCase):
+    """
+    Test the implementation of the 'Polynomial' block class
+    """
+
+    def test_embedding(self):
+        """test algebraic components via embedding"""
+
+        # y = 2 u^2 + 3 u + 1 (numpy.polyval convention: highest power first)
+        B = Polynomial(coeffs=[2, 3, 1])
+        def src(t): return t
+        def ref(t): return 2 * t**2 + 3 * t + 1
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertEqual(*E.check_SISO(t))
+
+        # vector input, cubic
+        B = Polynomial(coeffs=[1, 0, -1, 0])  # u^3 - u
+        def src(t): return t + 1, 2 * t + 1
+        def ref(t):
+            u1, u2 = t + 1, 2 * t + 1
+            return u1**3 - u1, u2**3 - u2
+        E = Embedding(B, src, ref)
+
+        for t in range(10): self.assertTrue(np.allclose(*E.check_MIMO(t)))
+
+
+    def test_constant(self):
+        """polynomial with single coefficient is constant"""
+        B = Polynomial(coeffs=[7.0])
+        B.inputs[0] = 12.3
+        B.update(0)
+        self.assertEqual(B.outputs[0], 7.0)
+
+
 class TestExp(unittest.TestCase):
     """
     Test the implementation of the 'Exp' block class

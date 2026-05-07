@@ -13,7 +13,7 @@ from pathsim.blocks import (
 )
 from pathsim.blocks.delay import Delay
 from pathsim.blocks.switch import Switch
-from pathsim.blocks.fir import FIR
+from pathsim.blocks.discrete import FIR
 from pathsim.blocks.kalman import KalmanFilter
 from pathsim.blocks.noise import WhiteNoise, PinkNoise
 from pathsim.blocks.rng import RandomNumberGenerator

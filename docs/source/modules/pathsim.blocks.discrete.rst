@@ -1,7 +1,7 @@
-Sample & Hold
+Discrete-Time
 =============
 
-.. automodule:: pathsim.blocks.samplehold
+.. automodule:: pathsim.blocks.discrete
    :members:
    :show-inheritance:
    :undoc-members:

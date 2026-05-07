@@ -93,12 +93,6 @@ Filters and signal conditioning blocks.
 
       Butterworth lowpass, highpass, bandpass, and bandstop filters.
 
-   .. grid-item-card:: FIR
-      :link: pathsim.blocks.fir
-      :link-type: doc
-
-      Finite impulse response filters with arbitrary coefficients.
-
    .. grid-item-card:: Converters
       :link: pathsim.blocks.converters
       :link-type: doc
@@ -201,11 +195,12 @@ Blocks for time-based operations and discrete sampling.
 
       Time delays for modeling transport lags and communication delays.
 
-   .. grid-item-card:: Sample & Hold
-      :link: pathsim.blocks.samplehold
+   .. grid-item-card:: Discrete-Time
+      :link: pathsim.blocks.discrete
       :link-type: doc
 
-      Sample and hold circuits for discrete-time signal processing.
+      Sample and hold, FIR/IIR filters, discrete integrator and derivative,
+      discrete state-space, tapped delay line.
 
    .. grid-item-card:: Switch
       :link: pathsim.blocks.switch
@@ -293,7 +288,6 @@ Base Classes
    pathsim.blocks.math
    pathsim.blocks.function
    pathsim.blocks.filters
-   pathsim.blocks.fir
    pathsim.blocks.spectrum
    pathsim.blocks.converters
    pathsim.blocks.rf
@@ -306,7 +300,7 @@ Base Classes
    pathsim.blocks.integrator
    pathsim.blocks.differentiator
    pathsim.blocks.delay
-   pathsim.blocks.samplehold
+   pathsim.blocks.discrete
    pathsim.blocks.switch
    pathsim.blocks.counter
    pathsim.blocks.fmu
