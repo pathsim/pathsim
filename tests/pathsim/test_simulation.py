@@ -21,9 +21,11 @@ from pathsim.connection import Connection
 #modules from pathsim for test case
 from pathsim.blocks import (
     Integrator,
-    Amplifier,  
-    Scope, 
-    Adder
+    Amplifier,
+    Scope,
+    Adder,
+    Function,
+    Constant,
     )
 
 from pathsim._constants import (
@@ -1043,6 +1045,65 @@ class TestSimulationRuntimeMutation(unittest.TestCase):
         # Integration result should reflect the change
         time, data = self.Sco.read()
         self.assertGreater(len(time), 0)
+
+
+class TestSimulationAlgebraicLoop(unittest.TestCase):
+    """Regression tests for algebraic-loop port resolution.
+
+    In an algebraic loop the iteration order is block.update() ->
+    connection.update(). Without eager port resolution during graph
+    assembly the first iteration would see input registers still at
+    their Block.__init__ default size, and any block accessing inputs
+    by position (Function splatting into a multi-arg lambda) would
+    raise TypeError.
+    """
+
+    def test_function_in_algebraic_loop_runs(self):
+        """Function with multi-arg lambda inside algebraic loop must run."""
+
+        c = Constant(value=1.0)
+        A = Function(lambda u, fb: u + 0.1 * fb)
+        B = Function(lambda x: 0.5 * x)
+
+        blocks = [c, A, B]
+        connections = [
+            Connection(c, A[0]),
+            Connection(A, B),
+            Connection(B, A[1]),    # closes the loop
+            ]
+
+        Sim = Simulation(blocks, connections, dt=0.01, log=False)
+
+        #without eager resolution this would raise TypeError on the first
+        #step ("missing 1 required positional argument: 'fb'")
+        Sim.run(duration=0.05)
+
+        #fixed point: A = 1 + 0.1 * 0.5 * A  ->  A = 1 / 0.95
+        self.assertAlmostEqual(float(A.outputs[0]), 1.0 / 0.95, 6)
+
+
+    def test_assemble_graph_resolves_all_connections(self):
+        """After Simulation init every connection's registers are sized."""
+
+        c = Constant(value=1.0)
+        A = Function(lambda u, fb: u + fb)
+        B = Function(lambda x: x)
+
+        blocks = [c, A, B]
+        connections = [
+            Connection(c, A[0]),
+            Connection(A, B),
+            Connection(B, A[1]),
+            ]
+
+        Simulation(blocks, connections, dt=0.01, log=False)
+
+        #all registers must reach their final size during _assemble_graph
+        self.assertGreaterEqual(len(A.inputs), 2)
+        self.assertGreaterEqual(len(B.inputs), 1)
+        self.assertGreaterEqual(len(c.outputs), 1)
+        self.assertGreaterEqual(len(A.outputs), 1)
+        self.assertGreaterEqual(len(B.outputs), 1)
 
 
 # RUN TESTS LOCALLY ====================================================================
