@@ -1477,14 +1477,17 @@ class Simulation:
 
                     #implicit solver didn't converge
                     if not success:
-                        details = self._solve_tracker.details(lambda b: b.__class__.__name__)
                         if is_adaptive:
-                            self.logger.warning(
-                                "implicit solver not converged, reverting step at t={:.6f}\n{}".format(
-                                    time_stage, "\n".join(details)))
+                            #adaptive stepping: a non-converged solve is
+                            #the expected signal to halve the step and
+                            #retry. revert silently — same handling as the
+                            #LTE failure below. residuals stay available
+                            #via self._solve_tracker for diagnostics.
                             self._revert(self.time)
                             return False, 0.0, 0.5, total_evals + 1, total_solver_its
                         else:
+                            #fixed-step: user has no recovery path, log it
+                            details = self._solve_tracker.details(lambda b: b.__class__.__name__)
                             self.logger.warning(
                                 "implicit solver not converged at t={:.6f} (iters: {})\n{}".format(
                                     time_stage, solver_its, "\n".join(details)))
