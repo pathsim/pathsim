@@ -230,8 +230,61 @@ class PowProd(Math):
 
         #create internal algebraic operator
         self.op_alg = Operator(
-            func=lambda x: np.prod(np.power(x, self.exponents)), 
+            func=lambda x: np.prod(np.power(x, self.exponents)),
             jac=_jac
+            )
+
+
+@mutable
+class Polynomial(Math):
+    """Polynomial operator block.
+
+    Evaluates a polynomial in the input. The coefficients follow the
+    `numpy.polyval` convention, with the highest order term first:
+
+    .. math::
+
+        \\vec{y} = c_0 \\vec{u}^n + c_1 \\vec{u}^{n-1} + \\dots + c_{n-1} \\vec{u} + c_n
+
+    This block supports vector inputs (the polynomial is evaluated
+    element-wise).
+
+    Example
+    -------
+    Quadratic :math:`y = 2 u^2 + 3 u + 1`:
+
+    .. code-block:: python
+
+        p = Polynomial(coeffs=[2, 3, 1])
+
+    Parameters
+    ----------
+    coeffs : array_like
+        polynomial coefficients in descending order of power,
+        following the ``numpy.polyval`` convention
+
+    Attributes
+    ----------
+    op_alg : Operator
+        internal algebraic operator
+    """
+
+    def __init__(self, coeffs=[1.0, 0.0]):
+        super().__init__()
+
+        self.coeffs = np.asarray(coeffs, dtype=float)
+
+        #derivative coefficients for jacobian
+        def _deriv():
+            n = len(self.coeffs)
+            if n <= 1:
+                return np.zeros(1)
+            powers = np.arange(n - 1, 0, -1)
+            return self.coeffs[:-1] * powers
+
+        self.op_alg = Operator(
+            func=lambda x: np.polyval(self.coeffs, x),
+            jac=lambda x: np.diag(np.polyval(_deriv(), x))
             )
 
 
