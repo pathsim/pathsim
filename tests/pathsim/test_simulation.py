@@ -39,6 +39,7 @@ from pathsim._constants import (
 from pathsim.blocks import Source, Relay
 from pathsim.events.schedule import Schedule
 from pathsim.events._event import Event
+from pathsim.exceptions import StopSimulation
 
 
 # TESTS ================================================================================
@@ -754,6 +755,82 @@ class TestSimulationAdvanced(unittest.TestCase):
 
         #simulation should have stopped early
         self.assertLess(self.Sim.time, 5.0)
+
+
+    def test_stop_simulation_exception_stops_run(self):
+        """StopSimulation raised by a block stops run() without propagating"""
+
+        threshold = 0.5  # Int state starts at 1 and decays — stop when below this
+
+        def guard(x):
+            if x < threshold:
+                raise StopSimulation(f"value dropped below {threshold}")
+            return x
+
+        guard_block = Function(guard)
+        self.Sim.add_block(guard_block)
+        self.Sim.add_connection(Connection(self.Int, guard_block))
+
+        # should not raise, and should stop before duration=5
+        self.Sim.run(duration=5.0, reset=True)
+
+        self.assertFalse(self.Sim._active)
+        self.assertLess(self.Sim.time, 5.0)
+
+
+    def test_stop_simulation_at_first_step(self):
+        """StopSimulation raised immediately leaves sim.time at start"""
+
+        call_count = [0]
+
+        def always_stop(x):
+            call_count[0] += 1
+            raise StopSimulation("stop immediately")
+
+        guard_block = Function(always_stop)
+        self.Sim.add_block(guard_block)
+        self.Sim.add_connection(Connection(self.Int, guard_block))
+
+        start_time = self.Sim.time
+        self.Sim.run(duration=5.0, reset=False)
+
+        self.assertFalse(self.Sim._active)
+        self.assertEqual(self.Sim.time, start_time)
+
+
+    def test_stop_simulation_exception_stops_run_streaming(self):
+        """StopSimulation raised by a block terminates run_streaming cleanly"""
+
+        threshold = 0.5
+
+        def guard(x):
+            if x < threshold:
+                raise StopSimulation("streaming stop")
+            return x
+
+        guard_block = Function(guard)
+        self.Sim.add_block(guard_block)
+        self.Sim.add_connection(Connection(self.Int, guard_block))
+
+        results = list(self.Sim.run_streaming(
+            duration=5.0,
+            reset=True,
+            tickrate=100,
+            func_callback=lambda: self.Sim.time
+        ))
+
+        self.assertFalse(self.Sim._active)
+        self.assertLess(self.Sim.time, 5.0)
+        self.assertGreater(len(results), 0)
+
+
+    def test_stop_simulation_no_exception_normal_run(self):
+        """Regression: normal run without StopSimulation completes fully"""
+
+        self.Sim.run(duration=2.0, reset=True)
+
+        self.assertAlmostEqual(self.Sim.time, 2.0, 5)
+        self.assertTrue(self.Sim._active)
 
 
     def test_deprecated_timestep_methods(self):

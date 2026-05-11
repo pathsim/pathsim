@@ -47,6 +47,7 @@ from .blocks._block import Block
 from .events._event import Event
 
 from .connection import Connection
+from .exceptions import StopSimulation
 
 
 # TRANSIENT SIMULATION CLASS ============================================================
@@ -1631,16 +1632,22 @@ class Simulation:
         _dt = self.dt
 
         #initial system function evaluation
-        self._update(self.time)
-
-        #catch and resolve initial events
-        for event, *_ in self._detected_events(self.time):
-
-            #resolve events directly
-            event.resolve(self.time)
-
-            #evaluate system function again -> propagate event
+        try:
             self._update(self.time)
+
+            #catch and resolve initial events
+            for event, *_ in self._detected_events(self.time):
+
+                #resolve events directly
+                event.resolve(self.time)
+
+                #evaluate system function again -> propagate event
+                self._update(self.time)
+
+        except StopSimulation as e:
+            self.logger.info(f"STOP (StopSimulation: '{e}')")
+            self._active = False
+            return
 
         #sampling states and inputs at 'self.time == starting_time'
         self._sample(self.time, _dt)
@@ -1649,10 +1656,15 @@ class Simulation:
         while self.time < end_time and self._active:
 
             #advance the simulation by one (effective) timestep '_dt'
-            success, error_norm, scale, *_ = self.timestep(
-                dt=_dt,
-                adaptive=_adaptive
-                )
+            try:
+                success, error_norm, scale, *_ = self.timestep(
+                    dt=_dt,
+                    adaptive=_adaptive
+                    )
+            except StopSimulation as e:
+                self.logger.info(f"STOP (StopSimulation: '{e}')")
+                self._active = False
+                break
 
             #perform adaptive rescale
             if _adaptive:
