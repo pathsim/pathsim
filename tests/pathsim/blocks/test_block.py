@@ -254,6 +254,33 @@ class TestBlock(unittest.TestCase):
         self.assertEqual(cache_info.misses, 1)
 
 
+    def test_register_sizing_from_port_labels(self):
+        """Registers are pre-sized to the declared port labels so blocks
+        with unconnected multi-port interfaces stay positionally addressable.
+        """
+
+        class _LabeledBlock(Block):
+            input_port_labels = {"a": 0, "b": 1}
+            output_port_labels = {"x": 0, "y": 1, "z": 2}
+
+        B = _LabeledBlock()
+
+        #registers sized to highest declared index + 1
+        self.assertEqual(len(B.inputs), 2)
+        self.assertEqual(len(B.outputs), 3)
+
+        #shape reflects declared ports even without connections
+        self.assertEqual(B.shape, (2, 3))
+
+        #all declared ports addressable and zero-initialized
+        self.assertEqual(B.inputs["b"], 0.0)
+        self.assertEqual(B.outputs["z"], 0.0)
+
+        #blocks without port labels keep the default size 1 registers
+        self.assertEqual(len(Block().inputs), 1)
+        self.assertEqual(len(Block().outputs), 1)
+
+
 # RUN TESTS LOCALLY ====================================================================
 
 if __name__ == '__main__':

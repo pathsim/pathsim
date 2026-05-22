@@ -18,6 +18,32 @@ from ..utils.register import Register
 from ..utils.portreference import PortReference
 
 
+# HELPERS ===============================================================================
+
+def _labels_size(labels):
+    """Minimum register size required to hold all declared port labels.
+
+    Port labels map string aliases to integer port indices. The register has
+    to be large enough to address the highest declared index, otherwise blocks
+    with unconnected declared ports (e.g. a multi-input block placed without
+    connections) would default to the size 1 register and break positional
+    input access.
+
+    Parameters
+    ----------
+    labels : dict[str: int] | None
+        port label mapping (alias -> index)
+
+    Returns
+    -------
+    size : int | None
+        minimum register size, or None if no labels are declared
+    """
+    if not labels:
+        return None
+    return max(labels.values()) + 1
+
+
 # BASE BLOCK CLASS ======================================================================
 
 class Block:
@@ -84,11 +110,14 @@ class Block:
 
     def __init__(self):
 
-        #registers to hold input and output values
+        #registers to hold input and output values, pre-sized to the declared
+        #port labels so blocks with unconnected ports are still addressable
         self.inputs = Register(
+            size=_labels_size(self.input_port_labels),
             mapping=self.input_port_labels and self.input_port_labels.copy()
             )
         self.outputs = Register(
+            size=_labels_size(self.output_port_labels),
             mapping=self.output_port_labels and self.output_port_labels.copy()
             )
 

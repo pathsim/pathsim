@@ -691,15 +691,16 @@ class Simulation:
         for block in self.blocks:
             block.inputs.reset()
 
+        #resolve all port indices so input/output registers are sized before
+        #graph assembly evaluates block passthrough via len(block) and before
+        #any block.update() runs (see Connection.resolve_ports)
+        for con in self.connections:
+            con.resolve_ports()
+
         #time the graph construction
         with Timer(verbose=False) as T:
             self.graph = Graph(self.blocks, self.connections)
         self._graph_dirty = False
-
-        #resolve all port indices so input/output registers are sized
-        #before any block.update() runs (see Connection.resolve_ports)
-        for con in self.connections:
-            con.resolve_ports()
 
         #create boosters for loop closing connections
         if self.graph.has_loops:
