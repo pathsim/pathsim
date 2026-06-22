@@ -1,4 +1,5 @@
 from .differentiator import *
+from .constraint import *
 from .integrator import *
 from .multiplier import *
 from .divider import *
