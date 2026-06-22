@@ -84,6 +84,22 @@ class Integrator(Block):
         self.outputs.update_from_array(self.engine.state)
 
 
+    def derivative(self, t):
+        """time derivative of the integrator state, which is just the input
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        dxdt : np.ndarray
+            time derivative of the integrator state
+        """
+        return self.inputs.to_array()
+
+
     def solve(self, t, dt):
         """advance solution of implicit update equation of the solver
 
@@ -95,7 +111,7 @@ class Integrator(Block):
             integration timestep
 
         Returns
-        ------- 
+        -------
         error : float
             solver residual norm
         """

@@ -707,10 +707,34 @@ class Block:
         return 0.0 
 
 
+    def derivative(self, t):
+        """Return the time derivative of the block state at time 't'.
+
+        This is the right hand side that the block feeds into its integration
+        engine. It is used to estimate a good initial timestep before a run.
+        The default implementation covers blocks whose dynamic path is defined
+        by an internal dynamic operator ('op_dyn'); blocks with a different
+        dynamic path reimplement this method, and stateless blocks return 'None'.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        dxdt : None | float | np.ndarray
+            time derivative of the block state, or 'None' if undefined
+        """
+        if self.engine is None or self.op_dyn is None:
+            return None
+        return self.op_dyn(self.engine.state, self.inputs.to_array(), t)
+
+
     def step(self, t, dt):
-        """The 'step' method is used in transient simulations and performs an action 
-        (numeric integration timestep, recording data, etc.) based on the current 
-        inputs and the current internal state. 
+        """The 'step' method is used in transient simulations and performs an action
+        (numeric integration timestep, recording data, etc.) based on the current
+        inputs and the current internal state.
 
         It performs one timestep for the internal states. For instant time blocks,
         the 'step' method does not has to be implemented specifically. 
