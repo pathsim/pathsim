@@ -10,7 +10,7 @@
 import unittest
 import numpy as np
 
-from pathsim.blocks.dae import SemiExplicitDAE, MassMatrixDAE
+from pathsim.blocks.dae import SemiExplicitDAE, MassMatrixDAE, FullyImplicitDAE
 
 from pathsim.solvers.esdirk43 import ESDIRK43
 
@@ -262,6 +262,104 @@ class TestMassMatrixDAE(unittest.TestCase):
             )
         sim.run(20.0)
         np.testing.assert_allclose(dae.outputs.to_array(), [1.0, 1.0], atol=1e-3)
+
+
+class TestFullyImplicitDAE(unittest.TestCase):
+    """
+    Test the implementation of the 'FullyImplicitDAE' block class.
+    """
+
+    def test_init(self):
+        dae = FullyImplicitDAE(lambda x, xdot, u, t: xdot + x, initial_value=2.0)
+        np.testing.assert_array_equal(dae.initial_value, np.array([2.0]))
+        np.testing.assert_array_equal(dae._xdot, np.array([0.0]))
+        self.assertEqual(len(dae.outputs), 1)
+
+    def test_xdot_recovery(self):
+        #F = xdot + x = 0 -> xdot = -x
+        dae = FullyImplicitDAE(lambda x, xdot, u, t: xdot + x, initial_value=2.0)
+        xdot = dae._solve_xdot(np.array([2.0]), np.array([0.0]), 0.0)
+        self.assertAlmostEqual(float(xdot[0]), -2.0, places=8)
+
+    def test_passthrough(self):
+        dae = FullyImplicitDAE(lambda x, xdot, u, t: xdot + x, initial_value=1.0)
+        self.assertEqual(len(dae), 0)
+
+    def test_reduced_jac_analytic_matches_numerical(self):
+        #F = xdot + x  ->  dF/dx = I, dF/dxdot = I  ->  reduced J = -I
+        func = lambda x, xdot, u, t: xdot + x
+        jac_x = lambda x, xdot, u, t: np.eye(len(x))
+        jac_xdot = lambda x, xdot, u, t: np.eye(len(x))
+
+        dae_num = FullyImplicitDAE(func, [1.0, 2.0])
+        dae_ana = FullyImplicitDAE(func, [1.0, 2.0], jac_x=jac_x, jac_xdot=jac_xdot)
+
+        x, u = np.array([1.0, 2.0]), np.array([0.0])
+        #analytic reduced jacobian and the dynamic-operator (numerical) jacobian
+        J_ana = dae_ana._reduced_jac(x, u, 0.0)
+        J_num = dae_num.op_dyn.jac_x(x, u, 0.0)
+        np.testing.assert_allclose(J_ana, -np.eye(2), atol=1e-12)
+        np.testing.assert_allclose(J_num, -np.eye(2), atol=1e-6)
+
+    def test_reset(self):
+        dae = FullyImplicitDAE(lambda x, xdot, u, t: xdot + x, initial_value=2.0)
+        dae.set_solver(ESDIRK43, None)
+        dae._xdot = np.array([9.0])
+        dae.reset()
+        np.testing.assert_array_equal(dae._xdot, np.zeros(1))
+
+    def test_info(self):
+        info = FullyImplicitDAE.info()
+        self.assertEqual(info["type"], "FullyImplicitDAE")
+        for p in ("func", "initial_value", "jac_x", "jac_xdot"):
+            self.assertIn(p, info["parameters"])
+
+    def test_simulation_autonomous(self):
+        #F = xdot + x = 0  ->  x' = -x  ->  x = exp(-t)
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Scope
+        dae = FullyImplicitDAE(lambda x, xdot, u, t: xdot + x, initial_value=1.0)
+        sco = Scope()
+        sim = Simulation(
+            blocks=[dae, sco], connections=[Connection(dae[0], sco[0])],
+            dt=0.01, Solver=ESDIRK43, log=False
+            )
+        sim.run(2.0)
+        self.assertAlmostEqual(float(dae.engine.state[0]), np.exp(-2.0), places=4)
+
+    def test_simulation_oscillator(self):
+        #implicit harmonic oscillator, x0 = [1, 0] -> [cos t, -sin t]
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Scope
+        def func(x, xdot, u, t):
+            return np.array([xdot[0] - x[1], xdot[1] + x[0]])
+        dae = FullyImplicitDAE(func, initial_value=[1.0, 0.0])
+        sco = Scope()
+        sim = Simulation(
+            blocks=[dae, sco],
+            connections=[Connection(dae[0], sco[0]), Connection(dae[1], sco[1])],
+            dt=0.005, Solver=ESDIRK43, log=False
+            )
+        sim.run(1.0)
+        x = dae.engine.state
+        self.assertAlmostEqual(float(x[0]), np.cos(1.0), places=3)
+        self.assertAlmostEqual(float(x[1]), -np.sin(1.0), places=3)
+
+    def test_simulation_with_input(self):
+        #F = xdot + x - u = 0  ->  x' = u - x  ->  x -> u
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Constant, Scope
+        func = lambda x, xdot, u, t: xdot + x - u
+        dae = FullyImplicitDAE(func, initial_value=0.0)
+        src = Constant(4.0)
+        sco = Scope()
+        sim = Simulation(
+            blocks=[src, dae, sco],
+            connections=[Connection(src, dae), Connection(dae[0], sco[0])],
+            dt=0.01, Solver=ESDIRK43, log=False
+            )
+        sim.run(20.0)
+        self.assertAlmostEqual(float(dae.engine.state[0]), 4.0, places=4)
 
 # RUN TESTS LOCALLY ====================================================================
 

@@ -590,3 +590,265 @@ class MassMatrixDAE(Block):
         self._xa = self._solve_xa(x_d, u, t)
         f = lu_solve(self._lu, self.func(self._full(x_d), u, t)[self._d])
         return self.engine.step(f, dt)
+
+
+class FullyImplicitDAE(Block):
+    """Fully-implicit differential-algebraic equation (DAE) system.
+
+    Integrates a system given in fully-implicit residual form
+
+    .. math::
+
+        F(x, \\dot{x}, u, t) = 0
+
+
+    where :math:`u` is the block input and the output is the state
+    :math:`y = x`.
+
+    At every evaluation the state derivative is recovered by an internal
+    Newton-Anderson iteration (:class:`.NewtonAnderson`) that solves
+    :math:`F(x, \\dot{x}, u, t) = 0` for :math:`\\dot{x}`, warm-started with the
+    previous solution. The block then presents the explicit right hand side
+    :math:`\\dot{x} = \\dot{x}(x, u, t)` to the integration engine, so the DAE
+    integrates with any solver, explicit or implicit. The system is assumed to
+    be index-1, i.e. the Jacobian :math:`\\partial F / \\partial \\dot{x}` is
+    nonsingular.
+
+    Like the `ODE` block, the recovered derivative is wrapped in a
+    `DynamicOperator` and the engine Jacobian is taken from `op_dyn.jac_x`.
+
+    Note
+    ----
+    The reduced Jacobian :math:`\\partial \\dot{x} / \\partial x` follows from
+    the implicit function theorem,
+
+    .. math::
+
+        \\frac{\\partial \\dot{x}}{\\partial x}
+        = -\\left(\\frac{\\partial F}{\\partial \\dot{x}}\\right)^{-1}
+           \\frac{\\partial F}{\\partial x}
+
+    It is used analytically when both `jac_x` and `jac_xdot` are supplied,
+    otherwise it is approximated by finite differences through the recovered
+    derivative. Supplying `jac_xdot` also accelerates the inner solve.
+
+    Example
+    -------
+    A harmonic oscillator written in fully-implicit form, with state
+    :math:`x = [\\text{position}, \\text{velocity}]`:
+
+    .. code-block:: python
+
+        import numpy as np
+        from pathsim.blocks import FullyImplicitDAE
+
+        def func(x, xdot, u, t):
+            return np.array([
+                xdot[0] - x[1],   #position' = velocity
+                xdot[1] + x[0]    #velocity' = -position
+                ])
+
+        dae = FullyImplicitDAE(func, initial_value=[1.0, 0.0])
+
+
+    Parameters
+    ----------
+    func : callable
+        residual function with signature `func(x, xdot, u, t)` returning an
+        array of the dimension of the state `x`
+    initial_value : float, array[float]
+        initial value / initial condition of the state `x`
+    jac_x : callable, None
+        optional analytical jacobian of `func` with respect to `x` with
+        signature `jac_x(x, xdot, u, t)`, used for the reduced jacobian
+    jac_xdot : callable, None
+        optional analytical jacobian of `func` with respect to `xdot` with
+        signature `jac_xdot(x, xdot, u, t)`, accelerates the inner solve and is
+        used for the reduced jacobian, central finite differences are used if
+        `None`
+
+    Attributes
+    ----------
+    engine : Solver
+        numerical integration engine for the state `x`
+    op_dyn : DynamicOperator
+        dynamic operator wrapping the recovered derivative
+    opt : NewtonAnderson
+        internal Newton-Anderson optimizer for the state derivative
+    """
+
+    def __init__(
+        self,
+        func=lambda x, xdot, u, t: xdot + x,
+        initial_value=0.0,
+        jac_x=None,
+        jac_xdot=None
+        ):
+
+        super().__init__()
+
+        #implicit residual and optional analytical jacobians
+        self.func = func
+        self.jac_x = jac_x
+        self.jac_xdot = jac_xdot
+
+        #initial condition of the state (drives the engine)
+        self.initial_value = np.atleast_1d(initial_value).astype(float)
+
+        #warm-start for the recovered state derivative
+        self._xdot = np.zeros_like(self.initial_value)
+
+        #internal optimizer for the state derivative (consistent with engines)
+        self.opt = NewtonAnderson()
+
+        #dynamic operator for the recovered derivative, mirrors the ODE block;
+        #the reduced Jacobian is analytic (implicit function theorem) when both
+        #jacobians are given, otherwise the operator falls back to finite differences
+        _jac_x = self._reduced_jac if (jac_x is not None and jac_xdot is not None) else None
+        self.op_dyn = DynamicOperator(func=self._rhs, jac_x=_jac_x)
+
+        #pre-size the output register to the state
+        self.outputs.update_from_array(self.initial_value)
+
+
+    def __len__(self):
+        #the output is the integrated state, no direct input passthrough
+        return 0
+
+
+    def reset(self):
+        """Reset inputs, outputs, the engine and the warm-start of the state
+        derivative.
+        """
+        super().reset()
+        self._xdot = np.zeros_like(self.initial_value)
+
+
+    def _solve_xdot(self, x, u, t):
+        """Recover the state derivative by solving the residual
+        'func(x, xdot, u, t) = 0' for xdot, warm-started with the previous
+        solution. Does not mutate the warm-start.
+
+        Parameters
+        ----------
+        x : array[float]
+            current state
+        u : array[float]
+            current block input
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        xdot : array[float]
+            state derivative satisfying the residual
+        """
+        _res = lambda xd: self.func(x, xd, u, t)
+        _jac = None if self.jac_xdot is None \
+            else (lambda xd: self.jac_xdot(x, xd, u, t))
+        xdot, _, _ = solve_root(self.opt, _res, self._xdot, _jac)
+        return xdot
+
+
+    def _rhs(self, x, u, t):
+        """Recovered explicit right hand side (the state derivative).
+
+        Parameters
+        ----------
+        x : array[float]
+            current state
+        u : array[float]
+            current block input
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        xdot : array[float]
+            recovered state derivative
+        """
+        return self._solve_xdot(x, u, t)
+
+
+    def _reduced_jac(self, x, u, t):
+        """Analytical reduced Jacobian from the implicit function theorem,
+        :math:`-(\\partial F/\\partial \\dot{x})^{-1} \\partial F/\\partial x`.
+
+        Parameters
+        ----------
+        x : array[float]
+            current state
+        u : array[float]
+            current block input
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        J : array[array[float]]
+            reduced jacobian of the recovered derivative
+        """
+        xdot = self._solve_xdot(x, u, t)
+        Fx = np.atleast_2d(self.jac_x(x, xdot, u, t))
+        Fxd = np.atleast_2d(self.jac_xdot(x, xdot, u, t))
+        return -np.linalg.solve(Fxd, Fx)
+
+
+    def update(self, t):
+        """Expose the integrated state at the output.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        """
+        self.outputs.update_from_array(self.engine.state)
+
+
+    def solve(self, t, dt):
+        """Advance the implicit update equation of the solver with the recovered
+        derivative and its Jacobian from the dynamic operator.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        dt : float
+            integration timestep
+
+        Returns
+        -------
+        error : float
+            solver residual norm
+        """
+        x, u = self.engine.state, self.inputs.to_array()
+
+        #commit the warm-start at the current state, then linearize around it
+        self._xdot = self._solve_xdot(x, u, t)
+        J = self.op_dyn.jac_x(x, u, t)
+
+        return self.engine.solve(self._xdot, J, dt)
+
+
+    def step(self, t, dt):
+        """Compute the timestep update with the recovered derivative.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        dt : float
+            integration timestep
+
+        Returns
+        -------
+        success : bool
+            step was successful
+        error : float
+            local truncation error from adaptive integrators
+        scale : float
+            timestep rescale from adaptive integrators
+        """
+        x, u = self.engine.state, self.inputs.to_array()
+        self._xdot = self._solve_xdot(x, u, t)
+        return self.engine.step(self._xdot, dt)
