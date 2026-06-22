@@ -11,8 +11,8 @@ import numpy as np
 
 from ._block import Block
 
-from ..optim.newton import NewtonRaphson
-from ..optim.numerical import num_jac
+from ..optim.operator import DynamicOperator
+from ..optim.anderson import NewtonAnderson, solve_root
 
 
 # BLOCKS ================================================================================
@@ -37,7 +37,7 @@ class SemiExplicitDAE(Block):
     :math:`z = z(x, u, t)` of the differential states.
 
     At every evaluation the algebraic states are eliminated by an internal
-    Newton-Raphson iteration (:class:`.NewtonRaphson`) that solves
+    Newton-Anderson iteration (:class:`.NewtonAnderson`) that solves
     :math:`f_\\mathrm{alg}(x, z, u, t) = 0` for :math:`z`, warm-started with the
     previous solution. The block then presents the reduced explicit right hand
     side
@@ -102,8 +102,11 @@ class SemiExplicitDAE(Block):
     ----------
     engine : Solver
         numerical integration engine for the differential states `x`
-    solver : NewtonRaphson
-        internal root solver for the algebraic constraint
+    op_dyn : DynamicOperator
+        dynamic operator wrapping the reduced right hand side, provides the
+        engine Jacobian like the `ODE` block
+    opt : NewtonAnderson
+        internal Newton-Anderson optimizer for the algebraic constraint
     """
 
     def __init__(
@@ -131,8 +134,12 @@ class SemiExplicitDAE(Block):
         self.z0 = np.atleast_1d(z0).astype(float)
         self._z = self.z0.copy()
 
-        #internal root solver for the algebraic constraint
-        self.solver = NewtonRaphson()
+        #internal optimizer for the algebraic constraint (consistent with engines)
+        self.opt = NewtonAnderson()
+
+        #dynamic operator for the reduced right hand side, mirrors the ODE block
+        #and supplies the engine Jacobian through 'op_dyn.jac_x'
+        self.op_dyn = DynamicOperator(func=self._rhs)
 
         #pre-size the output register to the stacked state [x, z]
         self.outputs.update_from_array(
@@ -179,7 +186,7 @@ class SemiExplicitDAE(Block):
         """
         _func = lambda z: self.func_alg(x, z, u, t)
         _jac = None if self.jac_z is None else (lambda z: self.jac_z(x, z, u, t))
-        z, _, _ = self.solver.solve(_func, self._z, _jac)
+        z, _, _ = solve_root(self.opt, _func, self._z, _jac)
         return z
 
 
@@ -222,7 +229,7 @@ class SemiExplicitDAE(Block):
 
     def solve(self, t, dt):
         """Advance the implicit update equation of the solver with the reduced
-        right hand side and its finite-difference Jacobian.
+        right hand side and its Jacobian from the dynamic operator.
 
         Parameters
         ----------
@@ -241,7 +248,7 @@ class SemiExplicitDAE(Block):
         #commit the warm-start at the current state, then linearize around it
         self._z = self._solve_z(x, u, t)
         f = self.func_dyn(x, self._z, u, t)
-        J = num_jac(lambda _x: self._rhs(_x, u, t), x)
+        J = self.op_dyn.jac_x(x, u, t)
 
         return self.engine.solve(f, J, dt)
 

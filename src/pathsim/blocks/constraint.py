@@ -11,7 +11,7 @@ import numpy as np
 
 from ._block import Block
 
-from ..optim.newton import NewtonRaphson
+from ..optim.anderson import NewtonAnderson, solve_root
 
 
 # BLOCKS ================================================================================
@@ -33,9 +33,10 @@ class AlgebraicConstraint(Block):
         y = x \\quad\\text{such that}\\quad \\mathrm{func}(x, u) = 0
 
 
-    The constraint is resolved with an internal damped Newton-Raphson iteration
-    (:class:`.NewtonRaphson`) that is warm-started with the solution of the
-    previous evaluation, so typically only a couple of iterations are required.
+    The constraint is resolved with an internal Anderson-accelerated damped
+    Newton iteration (:class:`.NewtonAnderson`) that is warm-started with the
+    solution of the previous evaluation, so typically only a couple of
+    iterations are required.
     If no analytical Jacobian :math:`\\partial \\mathrm{func} / \\partial x` is
     supplied it is approximated by central finite differences.
 
@@ -103,8 +104,8 @@ class AlgebraicConstraint(Block):
 
     Attributes
     ----------
-    solver : NewtonRaphson
-        internal root solver for the algebraic constraint
+    opt : NewtonAnderson
+        internal Newton-Anderson optimizer for the algebraic constraint
     """
 
     def __init__(self, func=lambda x, u: x, x0=0.0, jac=None):
@@ -122,8 +123,8 @@ class AlgebraicConstraint(Block):
         self.x0 = np.atleast_1d(x0).astype(float)
         self._x = self.x0.copy()
 
-        #internal root solver for the constraint
-        self.solver = NewtonRaphson()
+        #internal optimizer for the constraint (consistent with implicit solvers)
+        self.opt = NewtonAnderson()
 
         #pre-size the output register to the unknown dimension
         self.outputs.update_from_array(self._x)
@@ -158,7 +159,7 @@ class AlgebraicConstraint(Block):
         _jac = None if self.jac is None else (lambda x: self.jac(x, u))
 
         #solve the constraint, warm-started with the previous solution
-        self._x, _, _ = self.solver.solve(_func, self._x, _jac)
+        self._x, _, _ = solve_root(self.opt, _func, self._x, _jac)
 
         #expose the converged unknown
         self.outputs.update_from_array(self._x)
