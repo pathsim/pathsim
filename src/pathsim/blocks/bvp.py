@@ -39,9 +39,12 @@ class BVP1D(Block):
     The problem is solved with :func:`scipy.integrate.solve_bvp` (a 4th-order
     collocation method with residual based mesh refinement). At every evaluation
     the solver is warm-started with the mesh, solution and parameters of the
-    previous solve, so slowly varying inputs are tracked cheaply. The block
-    output is the solution sampled at the query points `x_eval` (row-major,
-    equation by equation) followed by the converged free parameters.
+    previous solve, so slowly varying inputs are tracked cheaply. When the input
+    is unchanged since the last successful solve the re-solve is skipped
+    entirely, so repeated evaluations within a timestep (e.g. during the
+    algebraic loop) do not recompute the solution. The block output is the
+    solution sampled at the query points `x_eval` (row-major, equation by
+    equation) followed by the converged free parameters.
 
     Note
     ----
@@ -177,6 +180,10 @@ class BVP1D(Block):
         self.success = False
         self._y_eval = np.zeros((self.n, self.x_eval.size))
 
+        #input of the most recent successful solve, used to skip redundant
+        #re-solves when the boundary data has not changed between evaluations
+        self._u_last = None
+
         #pre-size the output register
         n_out = self.n * self.x_eval.size + (self._p.size if self._has_p else 0)
         self.outputs.update_from_array(np.zeros(n_out))
@@ -196,6 +203,7 @@ class BVP1D(Block):
         self._y = self._y0.copy()
         self._p = None if self.p0 is None else self.p0.copy()
         self.success = False
+        self._u_last = None
 
 
     def solution(self):
@@ -237,6 +245,11 @@ class BVP1D(Block):
         #current block input
         u = self.inputs.to_array()
 
+        #skip the solve if the boundary data is unchanged since the last
+        #successful solve; the warm-start and output are still valid
+        if self._u_last is not None and np.array_equal(u, self._u_last):
+            return
+
         #scipy callbacks, with or without free parameters
         if self._has_p:
             _fun = lambda x, y, p: self.fun(x, y, p, u)
@@ -253,10 +266,12 @@ class BVP1D(Block):
         if not self.success:
             return
 
-        #warm-start the next solve with the refined mesh and solution
+        #warm-start the next solve with the refined mesh and solution, and
+        #remember the input so an unchanged re-evaluation can be skipped
         self._x, self._y = sol.x, sol.y
         if self._has_p:
             self._p = sol.p
+        self._u_last = u.copy()
 
         #sample the solution at the query points and assemble the output
         self._y_eval = sol.sol(self.x_eval)[:self.n]

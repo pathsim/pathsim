@@ -134,6 +134,39 @@ class TestBVP1D(unittest.TestCase):
         np.testing.assert_allclose(bvp.solution()[0, 2], 2.0*np.sin(np.pi/4), atol=1e-5)
 
 
+    def test_input_unchanged_skips_resolve(self):
+        #a re-evaluation with unchanged input must not trigger another solve,
+        #but a changed input must
+        import pathsim.blocks.bvp as bvpmod
+
+        fun = lambda x, y, p, u: np.vstack([y[1], -y[0]])
+        bc = lambda ya, yb, p, u: np.array([ya[0], yb[0] - u[0]])
+        bvp = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2))
+
+        calls = [0]
+        orig = bvpmod.solve_bvp
+        def _counting(*a, **k):
+            calls[0] += 1
+            return orig(*a, **k)
+        bvpmod.solve_bvp = _counting
+        try:
+            bvp.inputs[0] = 2.0
+            bvp.update(0.0)            #first solve
+            bvp.update(0.0)            #same input -> skipped
+            self.assertEqual(calls[0], 1)
+
+            bvp.inputs[0] = 3.0
+            bvp.update(0.0)            #changed input -> solve again
+            self.assertEqual(calls[0], 2)
+        finally:
+            bvpmod.solve_bvp = orig
+
+        #output reflects the latest input
+        np.testing.assert_allclose(
+            bvp.solution()[0, -1], 3.0, atol=1e-5
+            )
+
+
 # RUN TESTS LOCALLY ====================================================================
 
 if __name__ == '__main__':
