@@ -11,10 +11,14 @@ import numpy as np
 
 from collections import deque
 
+from .numerical import num_jac
+
 from .._constants import (
     TOLERANCE,
     OPT_RESTART,
-    OPT_HISTORY
+    OPT_HISTORY,
+    SOL_TOLERANCE_FPI,
+    SOL_ITERATIONS_MAX
     )
 
 
@@ -365,3 +369,109 @@ class NewtonAnderson(Anderson):
             y, _ = super().step(_x, g)
 
             return y, res_norm
+
+
+
+# ROOT SOLVING ========================================================================
+
+def _inf_norm(residual, x):
+    """Infinity norm of the residual at 'x'."""
+    return np.linalg.norm(np.atleast_1d(residual(x)), np.inf)
+
+
+def solve_root(opt, residual, x0, jac=None,
+               tolerance=SOL_TOLERANCE_FPI, iterations_max=SOL_ITERATIONS_MAX,
+               line_search_max=20):
+    """Solve the square nonlinear system :math:`F(x) = 0` by Anderson accelerated
+    damped Newton iteration.
+
+    Each iteration takes a Newton direction :math:`\\Delta x = J^{-1} F`,
+    damps it with a backtracking line search on the residual norm so the step
+    stays in the basin of the current root, and then accelerates the resulting
+    iterate with the Anderson optimizer
+
+    .. math::
+
+        \\tilde{x}_{k+1} = x_k - \\alpha_k J^{-1} F(x_k), \\qquad
+        x_{k+1} = \\mathrm{Anderson}(x_k, \\tilde{x}_{k+1})
+
+
+    The Anderson step is applied to the (damped) Newton iterate rather than to
+    the raw fixed-point map :math:`x + F(x)`, so the first iterate is already a
+    proper Newton step and cold starts do not jump out of the root's basin. The
+    accelerated iterate is kept only if it does not increase the residual,
+    otherwise the plain Newton iterate is used, which makes the acceleration
+    safe. The optimizer instance is the same Newton-Anderson type the implicit
+    engines use, so the algebraic solves stay consistent with the solver stack.
+
+    The optimizer is reset before the iteration; the initial value doubles as
+    the warm-start.
+
+    Parameters
+    ----------
+    opt : Anderson | NewtonAnderson
+        Anderson optimizer instance used to accelerate the Newton iterates
+    residual : callable
+        residual function 'F(x)' of the square system
+    x0 : float, array[float]
+        initial value / warm-start for the solution
+    jac : callable, None
+        optional analytical Jacobian of 'residual', central finite differences
+        are used as a fallback if 'None'
+    tolerance : float
+        convergence tolerance on the residual norm
+    iterations_max : int
+        maximum number of iterations
+    line_search_max : int
+        maximum number of backtracking line search steps per iteration
+
+    Returns
+    -------
+    x : array[float]
+        converged solution
+    res : float
+        residual norm at the last iteration
+    iterations : int
+        number of iterations used
+    """
+
+    #fresh optimizer state for this solve
+    opt.reset()
+
+    #working solution as a flat float array (warm-start from 'x0')
+    _x = np.atleast_1d(x0).astype(float)
+    _res, i = _inf_norm(residual, _x), 0
+
+    for i in range(iterations_max):
+
+        #converged -> early exit
+        if _res < tolerance:
+            break
+
+        #newton direction (least squares fallback if the jacobian is singular)
+        _F = np.atleast_1d(residual(_x))
+        _J = np.atleast_2d(jac(_x) if jac is not None else num_jac(residual, _x))
+        try:
+            _dx = np.linalg.solve(_J, _F)
+        except np.linalg.LinAlgError:
+            _dx, *_ = np.linalg.lstsq(_J, _F, rcond=None)
+
+        #backtracking line search keeps the step in the basin of the root
+        _a, _xn, _rn = 1.0, _x - _dx, _inf_norm(residual, _x - _dx)
+        for _ in range(line_search_max):
+            _cand = _x - _a * _dx
+            _rc = _inf_norm(residual, _cand)
+            if _rc < (1.0 - 1e-4 * _a) * _res:
+                _xn, _rn = _cand, _rc
+                break
+            _a *= 0.5
+
+        #anderson acceleration of the damped newton iterate, kept only if it
+        #does not increase the residual (safeguard against overshoot)
+        _xa = np.atleast_1d(opt.step(_x, _xn)[0]).flatten()
+        if _inf_norm(residual, _xa) <= _rn:
+            _x, _res = _xa, _inf_norm(residual, _xa)
+        else:
+            _x, _res = _xn, _rn
+
+    return _x, _res, i

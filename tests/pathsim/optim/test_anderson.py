@@ -13,8 +13,9 @@ import unittest
 import numpy as np
 
 from pathsim.optim.anderson import (
-    Anderson, 
-    NewtonAnderson
+    Anderson,
+    NewtonAnderson,
+    solve_root
     )
 
 
@@ -151,6 +152,53 @@ class TestNewtonAnderson(unittest.TestCase):
         x0 = np.array([0.0])
         x_sol, res, iters = naa.solve(func_scalar, x0, jac=jac_scalar, iterations_max=200, tolerance=1e-10)
         self.assertAlmostEqual(x_sol[0], 0.7390851332151607, places=7)
+
+
+class TestSolveRoot(unittest.TestCase):
+    """
+    Tests for the 'solve_root' Anderson-accelerated damped Newton root solver.
+    """
+
+    def test_scalar_with_jac(self):
+        # x^2 - 2 = 0 -> sqrt(2)
+        x, res, it = solve_root(NewtonAnderson(), lambda x: x**2 - 2.0,
+                                np.array([1.0]), jac=lambda x: 2.0*x, tolerance=1e-12)
+        self.assertAlmostEqual(x[0], np.sqrt(2.0), places=10)
+        self.assertLess(res, 1e-12)
+
+    def test_scalar_numerical_jac(self):
+        x, res, it = solve_root(NewtonAnderson(), lambda x: x**2 - 2.0,
+                                np.array([1.0]), tolerance=1e-10)
+        self.assertAlmostEqual(x[0], np.sqrt(2.0), places=8)
+
+    def test_basin_preservation_cold_start(self):
+        # x^2 - 4 = 0 has roots +-2; the damped Newton must stay in the basin
+        # of the start, not jump across the root (the bug a raw fixed-point map
+        # x + F would cause)
+        func = lambda x: x**2 - 4.0
+        x_pos, *_ = solve_root(NewtonAnderson(), func, np.array([1.0]), tolerance=1e-12)
+        x_neg, *_ = solve_root(NewtonAnderson(), func, np.array([-1.0]), tolerance=1e-12)
+        self.assertAlmostEqual(x_pos[0], 2.0, places=8)
+        self.assertAlmostEqual(x_neg[0], -2.0, places=8)
+
+    def test_near_zero_start(self):
+        # F(x) = x - 3, x0 = 0 -> 3 (relies on the num_jac absolute step floor)
+        x, res, it = solve_root(NewtonAnderson(), lambda x: x - 3.0,
+                                np.array([0.0]), tolerance=1e-12)
+        self.assertAlmostEqual(x[0], 3.0, places=10)
+
+    def test_vector_nonlinear(self):
+        # circle and line: x0^2 + x1^2 = 1, x1 = x0 -> (1/sqrt2, 1/sqrt2)
+        def func(x):
+            return np.array([x[0]**2 + x[1]**2 - 1.0, x[1] - x[0]])
+        x, res, it = solve_root(NewtonAnderson(), func, np.array([0.5, 0.9]), tolerance=1e-12)
+        np.testing.assert_allclose(x, [1/np.sqrt(2), 1/np.sqrt(2)], atol=1e-8)
+
+    def test_warmstart_converges_immediately(self):
+        func = lambda x: x**2 - 2.0
+        x, *_ = solve_root(NewtonAnderson(), func, np.array([1.0]), tolerance=1e-12)
+        _, _, it = solve_root(NewtonAnderson(), func, x, tolerance=1e-12)
+        self.assertEqual(it, 0)
 
 
 # RUN TESTS LOCALLY ====================================================================

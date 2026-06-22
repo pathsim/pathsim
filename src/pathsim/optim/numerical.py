@@ -11,36 +11,37 @@
 
 import numpy as np
 
-from .. _constants import TOLERANCE
-
 
 # NUMERICAL DIFFERENTIATION ============================================================
 
-def num_jac(func, x, r=1e-3, tol=TOLERANCE):
-    """Numerically computes the jacobian of the function 'func' 
-    by central differences. 
+def num_jac(func, x, r=1e-3, tol=1e-8):
+    """Numerically computes the jacobian of the function 'func'
+    by central differences.
 
-    The stepsize 'h' is adaptively computed as a relative perturbation 
-    'r' with a small offset to avoid division by zero.
-    
+    The stepsize 'h' is adaptively computed as a relative perturbation
+    'r' with an absolute floor 'tol'. The floor keeps the perturbation
+    meaningful when components of 'x' are near zero, where a purely relative
+    step would shrink below the floating point resolution of 'func' and the
+    central difference would collapse to zero.
+
     Parameters
     ----------
     func : callable
         function to compute jacobian for
-    x : float, array[float] 
+    x : float, array[float]
         value for function at which the jacobian is evaluated
     r : float
         relative perturbation
     tol : float
-        tolerance for division by zero clipping
-    
+        absolute floor for the perturbation stepsize
+
     Returns
     -------
     jac : array[array[float]]
         2d jacobian array
     """
-    
-    #stepsize relative to value with clipping
+
+    #stepsize relative to value with an absolute floor
     H = np.clip(abs(r*x), tol, None)
 
     #catch scalar case (gradient)
