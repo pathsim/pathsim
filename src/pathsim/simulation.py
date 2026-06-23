@@ -1200,6 +1200,104 @@ class Simulation:
         self._set_solver(_solver)
 
 
+    # initial timestep estimation -------------------------------------------------
+
+    def estimate_initial_step(self, order=None):
+        """Estimate a good initial timestep from the system state and dynamics.
+
+        Implements the automatic initial step size selection of Hairer, Norsett
+        and Wanner: a first guess is formed from the scaled norms of the state
+        and its derivative, then refined with an estimate of the second
+        derivative obtained from an explicit Euler probe. The scaling uses the
+        absolute and relative error tolerances of the integration engine.
+
+        Note
+        ----
+        Blocks expose their state derivative through the 'Block.derivative'
+        method. Blocks that do not define it (stateless or with a custom dynamic
+        path) are skipped, and if no derivative information is available the
+        configured timestep is returned unchanged.
+
+        Parameters
+        ----------
+        order : int, None
+            order of the integration scheme, defaults to the order of the engine
+
+        Returns
+        -------
+        dt : float
+            estimated initial timestep
+
+        References
+        ----------
+        .. [1] Hairer, E., Norsett, S. P., & Wanner, G. (1993). "Solving Ordinary
+               Differential Equations I: Nonstiff Problems". Springer Series in
+               Computational Mathematics, Vol. 8, Section II.4.
+               :doi:`10.1007/978-3-540-78862-1`
+        """
+
+        #fallback timestep if no derivative information is available
+        _fallback = self.dt if self.dt is not None else SIM_TIMESTEP
+
+        #propagate inputs through the algebraic part
+        self._update(self.time)
+        t0 = self.time
+
+        #collect states and derivatives of the dynamic blocks
+        contrib, states, derivs = [], [], []
+        for b in self._blocks_dyn:
+            if not (b and b.engine):
+                continue
+            d = b.derivative(t0)
+            if d is None:
+                continue
+            s = np.atleast_1d(b.engine.state)
+            contrib.append((b, s.size))
+            states.append(s)
+            derivs.append(np.atleast_1d(d))
+
+        #no derivative information -> keep the configured timestep
+        if not derivs:
+            return _fallback
+
+        y0 = np.concatenate(states).astype(float)
+        f0 = np.concatenate(derivs).astype(float)
+
+        #weighted scaling from the engine error tolerances
+        sc = self.engine.tolerance_lte_abs + self.engine.tolerance_lte_rel * np.abs(y0)
+        d0 = np.sqrt(np.mean((y0 / sc) ** 2))
+        d1 = np.sqrt(np.mean((f0 / sc) ** 2))
+
+        #first guess for the initial step
+        h0 = 1e-6 if (d0 < 1e-5 or d1 < 1e-5) else 0.01 * d0 / d1
+
+        #estimate the second derivative from an explicit Euler probe, evaluating
+        #the dynamics at 'y0 + h0 f0' without taking an actual timestep
+        y1 = y0 + h0 * f0
+        _saved = [b.engine.state for b, _ in contrib]
+        _idx = 0
+        for b, sz in contrib:
+            b.engine.state = y1[_idx:_idx + sz]
+            _idx += sz
+        self._update(t0 + h0)
+        f1 = np.concatenate([np.atleast_1d(b.derivative(t0 + h0)) for b, _ in contrib])
+
+        #restore the original states and algebraic signals
+        for (b, _), s in zip(contrib, _saved):
+            b.engine.state = s
+        self._update(t0)
+
+        #second derivative estimate and refined step
+        d2 = np.sqrt(np.mean(((f1 - f0) / sc) ** 2)) / h0
+        p = order if order is not None else max(self.engine.n, 1)
+        if max(d1, d2) <= 1e-15:
+            h1 = max(1e-6, h0 * 1e-3)
+        else:
+            h1 = (0.01 / max(d1, d2)) ** (1.0 / (p + 1))
+
+        return float(min(100 * h0, h1))
+
+
     # timestepping helpers --------------------------------------------------------
 
     def _revert(self, t):
@@ -1628,6 +1726,11 @@ class Simulation:
 
         #simulation start and end time
         start_time, end_time = self.time, self.time + duration
+
+        #automatic initial timestep selection if no timestep is configured
+        if self.dt is None:
+            self.dt = self.estimate_initial_step()
+            self.logger.info(f"AUTO INITIAL STEP -> dt = {self.dt:.3e}")
 
         #effective timestep for duration
         _dt = self.dt
