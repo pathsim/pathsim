@@ -31,6 +31,7 @@ from ._constants import (
     )
 
 from .optim.booster import ConnectionBooster
+from .optim.anderson import Anderson
 
 from .utils.graph import Graph
 from .utils.analysis import Timer
@@ -228,6 +229,9 @@ class Simulation:
 
         #flag for setting the simulation active
         self._active = True
+
+        #flag to suppress data sampling (used during shooting iterations)
+        self._sampling_enabled = True
 
         #convergence trackers for the three solver loops
         self._loop_tracker = ConvergenceTracker()
@@ -1298,6 +1302,184 @@ class Simulation:
         return float(min(100 * h0, h1))
 
 
+    # periodic steady state -------------------------------------------------------
+
+    def _pss_get_state(self):
+        """Collect the internal states of all dynamic blocks.
+
+        Returns
+        -------
+        states : list[array[float]]
+            list of the engine state arrays of the dynamic blocks
+        """
+        return [np.atleast_1d(b.engine.state).copy()
+                for b in self._blocks_dyn if b and b.engine]
+
+
+    def _pss_set_state(self, states):
+        """Distribute a list of state arrays back onto the dynamic blocks.
+
+        Parameters
+        ----------
+        states : list[array[float]]
+            list of state arrays in the order of the dynamic blocks
+        """
+        i = 0
+        for b in self._blocks_dyn:
+            if b and b.engine:
+                b.engine.state = states[i]
+                i += 1
+
+
+    def _pss_integrate(self, t_start, period, dt):
+        """Integrate the system over exactly one period with fixed timesteps,
+        leaving the engines at the end-of-period state.
+
+        Parameters
+        ----------
+        t_start : float
+            start time of the period
+        period : float
+            length of the period
+        dt : float
+            fixed integration timestep
+        """
+        self.time = t_start
+        t_end = t_start + period
+        while self.time < t_end - 1e-12:
+            h = min(dt, t_end - self.time)
+            self.timestep(dt=h, adaptive=False)
+
+
+    def pss(self, period, transient=0.0, iterations_max=50, tolerance=1e-8,
+            dt=None, reset=False):
+        """Find the periodic steady state (limit cycle) of the system by
+        shooting.
+
+        For a system with period `T` the periodic steady state is the initial
+        condition :math:`x_0` that is invariant under the period map
+        :math:`P` which integrates the system over one period,
+
+        .. math::
+
+            P(x_0) = x_0, \\qquad P(x_0) = x(t_0 + T;\\, x_0)
+
+
+        The fixed point is found by an Anderson accelerated shooting iteration
+        on :math:`x_0`, where each shot integrates one period with fixed
+        timesteps. Data sampling is suppressed during the shooting iterations,
+        so recording blocks stay clean; after convergence the engines are left
+        at the limit-cycle initial state and the simulation time at the cycle
+        start, ready for a final recording run over one period.
+
+        Note
+        ----
+        This is a matrix-free shooting method (no monodromy matrix) and is
+        best suited to single-step integrators. An optional `transient` run can
+        be used to approach the limit cycle before shooting. Event handling is
+        not considered during the shooting iterations.
+
+        Parameters
+        ----------
+        period : float
+            period of the steady state
+        transient : float
+            duration of an optional transient run to approach the limit cycle
+        iterations_max : int
+            maximum number of shooting iterations
+        tolerance : float
+            convergence tolerance on the shooting residual
+        dt : float, None
+            fixed timestep for the period integration, defaults to `self.dt`
+        reset : bool
+            reset the simulation before solving (default False)
+
+        Returns
+        -------
+        success : bool
+            whether the shooting iteration converged
+        iterations : int
+            number of shooting iterations used
+        residual : float
+            shooting residual at the last iteration
+
+        References
+        ----------
+        .. [1] Aprille, T. J., & Trick, T. N. (1972). "Steady-state analysis of
+               nonlinear circuits with periodic inputs". Proceedings of the
+               IEEE, 60(1), 108--114. :doi:`10.1109/PROC.1972.8563`
+        """
+
+        #reset the simulation before solving
+        if reset:
+            self.reset()
+
+        #fixed timestep for the period integration
+        _dt = self.dt if dt is None else dt
+
+        #approach the limit cycle with an optional transient run
+        if transient > 0.0:
+            self.run(transient, reset=False, adaptive=False)
+
+        #nothing to do without dynamic states
+        if not self._pss_get_state():
+            self.logger.info("PSS -> no dynamic states, nothing to solve")
+            return True, 0, 0.0
+
+        #cycle start time and shooting accelerator
+        t0 = self.time
+        acc = Anderson()
+
+        self.logger.info(
+            f"PSS -> STARTING (period: {period}, transient: {transient})"
+            )
+
+        #suppress data sampling during the shooting iterations
+        _sampling = self._sampling_enabled
+        self._sampling_enabled = False
+
+        success, residual, it = False, 0.0, 0
+        with Timer(verbose=False) as T:
+            try:
+                for it in range(iterations_max):
+
+                    #current cycle-start state as a flat vector
+                    _states = self._pss_get_state()
+                    _split = np.cumsum([s.size for s in _states])[:-1]
+                    x0 = np.concatenate(_states)
+
+                    #integrate one period -> period map P(x0)
+                    self._pss_integrate(t0, period, _dt)
+                    x1 = np.concatenate(self._pss_get_state())
+
+                    #accelerated fixed-point step on P(x0) = x0
+                    x_new, residual = acc.step(x0, x1)
+
+                    #rewind to the cycle start with the updated initial state
+                    self.time = t0
+                    self._pss_set_state(np.split(x_new, _split))
+
+                    if residual < tolerance:
+                        success = True
+                        break
+            finally:
+                self._sampling_enabled = _sampling
+
+        #log the outcome
+        if success:
+            self.logger.info(
+                "PSS -> FINISHED (success: {}, iterations: {}, residual: {:.2e}, runtime: {})".format(
+                    success, it + 1, residual, T)
+                )
+        else:
+            self.logger.error(
+                "PSS -> FAILED (iterations: {}, residual: {:.2e}, runtime: {})".format(
+                    it + 1, residual, T)
+                )
+
+        return success, it + 1, residual
+
+
     # timestepping helpers --------------------------------------------------------
 
     def _revert(self, t):
@@ -1332,6 +1514,9 @@ class Simulation:
         t : float
             time where to sample
         """
+        #sampling can be suppressed during shooting iterations
+        if not self._sampling_enabled:
+            return
         for block in self.blocks:
             if block: block.sample(t, dt)
 
