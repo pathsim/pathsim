@@ -11,6 +11,8 @@ import numpy as np
 
 from collections import deque
 
+from scipy.linalg import lu_factor, lu_solve
+
 from .numerical import num_jac
 
 from .._constants import (
@@ -252,6 +254,21 @@ class NewtonAnderson(Anderson):
            49(4), 1715--1735. :doi:`10.1137/10078356X`
     """
 
+    def __init__(self, m=OPT_HISTORY, restart=OPT_RESTART):
+        super().__init__(m, restart)
+
+        #cached LU factorization of the Newton matrix and the matrix it
+        #factorizes, reused across iterations / stages while it is unchanged
+        self._lu = None
+        self._A = None
+
+
+    def reset(self):
+        """Reset the anderson accelerator and the cached Newton factorization"""
+        super().reset()
+        self._lu = None
+        self._A = None
+
 
     def solve(self, func, x0, jac=None, iterations_max=100, tolerance=1e-6):
         """Solve the function 'func' with initial value 
@@ -329,8 +346,19 @@ class NewtonAnderson(Anderson):
             
             return _x - _res / (_jac - 1.0), np.linalg.norm(_res)
 
-        #vectorial values (newton raphson)
-        return _x - np.linalg.solve(_jac - np.eye(len(_res)), _res), np.linalg.norm(_res)
+        #vectorial values (newton raphson), Newton matrix 'jac - I'
+        _A = _jac - np.eye(len(_res))
+
+        #reuse the cached factorization while the Newton matrix is unchanged
+        #(constant jacobian across iterations / stages), refactor otherwise
+        if self._A is not None and _A.shape == self._A.shape \
+            and np.array_equal(_A, self._A):
+            _lu = self._lu
+        else:
+            _lu = lu_factor(_A)
+            self._A, self._lu = _A.copy(), _lu
+
+        return _x - lu_solve(_lu, _res), np.linalg.norm(_res)
 
 
     def step(self, x, g, jac=None):

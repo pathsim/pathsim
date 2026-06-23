@@ -153,6 +153,44 @@ class TestNewtonAnderson(unittest.TestCase):
         x_sol, res, iters = naa.solve(func_scalar, x0, jac=jac_scalar, iterations_max=200, tolerance=1e-10)
         self.assertAlmostEqual(x_sol[0], 0.7390851332151607, places=7)
 
+    def test_newton_lu_matches_direct_solve(self):
+        # the cached LU path must match a direct solve of the Newton matrix (jac - I)
+        naa = NewtonAnderson()
+        x = np.array([1.0, -2.0, 0.5])
+        g = np.array([0.3, 0.1, -0.4])
+        jac = np.array([[2.0, 1.0, 0.0], [0.0, 3.0, 1.0], [1.0, 0.0, 2.0]])
+        y, _ = naa._newton(x, g, jac)
+        expected = x - np.linalg.solve(jac - np.eye(3), g - x)
+        np.testing.assert_allclose(y, expected, atol=1e-12)
+
+    def test_newton_lu_cache_reuse(self):
+        # unchanged Newton matrix -> factorization is reused, changed -> refactored
+        naa = NewtonAnderson()
+        x = np.array([1.0, 2.0])
+        g = np.array([2.0, 4.0])
+        jac = np.array([[2.0, 0.0], [0.0, 3.0]])
+
+        naa._newton(x, g, jac)
+        cached = naa._lu
+        self.assertIsNotNone(cached)
+
+        #same matrix -> same factorization object
+        naa._newton(x, g, jac)
+        self.assertIs(naa._lu, cached)
+
+        #different matrix -> new factorization
+        naa._newton(x, g, jac + np.eye(2))
+        self.assertIsNot(naa._lu, cached)
+
+    def test_newton_cache_cleared_on_reset(self):
+        naa = NewtonAnderson()
+        jac = np.array([[2.0, 0.0], [0.0, 3.0]])
+        naa._newton(np.array([1.0, 2.0]), np.array([2.0, 4.0]), jac)
+        self.assertIsNotNone(naa._A)
+        naa.reset()
+        self.assertIsNone(naa._A)
+        self.assertIsNone(naa._lu)
+
 
 class TestSolveRoot(unittest.TestCase):
     """
