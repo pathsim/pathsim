@@ -106,8 +106,47 @@ class TestBVP1D(unittest.TestCase):
     def test_info(self):
         info = BVP1D.info()
         self.assertEqual(info["type"], "BVP1D")
-        for p in ("fun", "bc", "n", "domain", "n_nodes", "x_eval", "y0", "p0", "tol"):
+        for p in ("fun", "bc", "n", "domain", "n_nodes", "x_eval", "y0", "p0",
+                  "tol", "max_nodes"):
             self.assertIn(p, info["parameters"])
+
+
+    def test_max_nodes_passthrough(self):
+        #max_nodes is stored as int and forwarded to solve_bvp
+        fun = lambda x, y, p, u: np.vstack([y[1], -y[0]])
+        bc = lambda ya, yb, p, u: np.array([ya[0], yb[0] - 1.0])
+        bvp = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2), max_nodes=5000)
+        self.assertEqual(bvp.max_nodes, 5000)
+
+        import pathsim.blocks.bvp as bvpmod
+        captured = {}
+        orig = bvpmod.solve_bvp
+        def _capture(*a, **k):
+            captured["max_nodes"] = k.get("max_nodes")
+            return orig(*a, **k)
+        bvpmod.solve_bvp = _capture
+        try:
+            bvp.update(0.0)
+        finally:
+            bvpmod.solve_bvp = orig
+        self.assertEqual(captured["max_nodes"], 5000)
+
+
+    def test_max_nodes_too_small_fails(self):
+        #a cap below the nodes required for convergence makes the solve fail,
+        #raising max_nodes recovers it
+        fun = lambda x, y, p, u: np.vstack([y[1], -y[0]])
+        bc = lambda ya, yb, p, u: np.array([ya[0], yb[0] - 1.0])
+
+        tight = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2), n_nodes=3,
+                      tol=1e-10, max_nodes=4)
+        tight.update(0.0)
+        self.assertFalse(tight.success)
+
+        loose = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2), n_nodes=3,
+                      tol=1e-10, max_nodes=10000)
+        loose.update(0.0)
+        self.assertTrue(loose.success)
 
 
     def test_simulation(self):

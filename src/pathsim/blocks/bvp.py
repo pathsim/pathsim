@@ -116,6 +116,10 @@ class BVP1D(Block):
         initial guess for the free parameters, `None` if there are none
     tol : float
         solver tolerance passed to :func:`scipy.integrate.solve_bvp`
+    max_nodes : int
+        maximum number of mesh nodes allowed during refinement, passed to
+        :func:`scipy.integrate.solve_bvp`. A solve that would exceed this cap
+        fails and the previous output and warm-start are retained.
 
     Attributes
     ----------
@@ -135,7 +139,8 @@ class BVP1D(Block):
         x_eval=None,
         y0=None,
         p0=None,
-        tol=1e-6
+        tol=1e-6,
+        max_nodes=1000
         ):
 
         super().__init__()
@@ -157,8 +162,9 @@ class BVP1D(Block):
         self.x_eval = (np.linspace(a, b, n_nodes) if x_eval is None
                        else np.asarray(x_eval, dtype=float))
 
-        #solver tolerance
+        #solver tolerance and mesh node cap
         self.tol = tol
+        self.max_nodes = int(max_nodes)
 
         #initial mesh and solution guess (used as warm-start)
         self._x0 = np.linspace(a, b, n_nodes)
@@ -254,11 +260,13 @@ class BVP1D(Block):
         if self._has_p:
             _fun = lambda x, y, p: self.fun(x, y, p, u)
             _bc = lambda ya, yb, p: self.bc(ya, yb, p, u)
-            sol = solve_bvp(_fun, _bc, self._x, self._y, p=self._p, tol=self.tol)
+            sol = solve_bvp(_fun, _bc, self._x, self._y, p=self._p,
+                            tol=self.tol, max_nodes=self.max_nodes)
         else:
             _fun = lambda x, y: self.fun(x, y, None, u)
             _bc = lambda ya, yb: self.bc(ya, yb, None, u)
-            sol = solve_bvp(_fun, _bc, self._x, self._y, tol=self.tol)
+            sol = solve_bvp(_fun, _bc, self._x, self._y,
+                            tol=self.tol, max_nodes=self.max_nodes)
 
         self.success = bool(sol.success)
 
