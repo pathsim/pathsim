@@ -19,6 +19,8 @@ import time
 import datetime
 import logging
 
+from collections import namedtuple
+
 from pathsim import __version__
 
 from ._constants import (
@@ -27,11 +29,13 @@ from ._constants import (
     SIM_TIMESTEP_MAX,
     SIM_TOLERANCE_FPI,
     SIM_ITERATIONS_MAX,
+    SOL_TOLERANCE_FPI,
+    SOL_ITERATIONS_MAX,
     LOG_ENABLE
     )
 
 from .optim.booster import ConnectionBooster
-from .optim.anderson import Anderson
+from .optim.anderson import Anderson, solve_root
 
 from .utils.graph import Graph
 from .utils.analysis import Timer
@@ -40,6 +44,7 @@ from .utils.portreference import PortReference
 from .utils.progresstracker import ProgressTracker
 from .utils.diagnostics import Diagnostics, ConvergenceTracker, StepTracker
 from .utils.logger import LoggerManager
+from .utils.linearization import assemble_linear_system
 
 from .solvers import SSPRK22, SteadyState
 
@@ -49,6 +54,11 @@ from .events._event import Event
 
 from .connection import Connection
 from .exceptions import StopSimulation
+
+
+# RESULT CONTAINERS ======================================================================
+
+TrimResult = namedtuple("TrimResult", ["success", "residual", "iterations"])
 
 
 # TRANSIENT SIMULATION CLASS ============================================================
@@ -1202,6 +1212,184 @@ class Simulation:
 
         #switch back to original solver
         self._set_solver(_solver)
+
+
+    # trim and system-level linearization -------------------------------------------
+
+    def trim(self, targets, free=(), t=None,
+             tolerance=SOL_TOLERANCE_FPI, iterations_max=SOL_ITERATIONS_MAX):
+        """Solve for a trimmed operating point: fix a mix of output values
+        and/or block states to target values and solve for the free unknowns
+        (every unpinned dynamic block state, plus the '.value' of any
+        'Constant' blocks passed in 'free').
+
+        Unlike 'steadystate()', which can only drive every dynamic block to
+        ``dx/dt = 0`` given whatever inputs are already wired, 'trim()' can
+        solve backwards for the input value that produces a desired output.
+
+        Parameters
+        ----------
+        targets : list[tuple]
+            conditions to satisfy. ``(block[port], value)`` (a 'PortReference')
+            pins an output value; ``(block, value)`` (a bare 'Block') pins
+            that block's own state directly, overriding the default
+            ``dx/dt = 0`` condition for that block
+        free : list[Block]
+            'Constant' blocks whose '.value' are additional free unknowns
+        t : float, None
+            evaluation time, defaults to 'self.time'
+        tolerance : float
+            convergence tolerance on the residual norm
+        iterations_max : int
+            maximum number of solver iterations
+
+        Returns
+        -------
+        TrimResult
+            namedtuple(success, residual, iterations)
+        """
+        _t = self.time if t is None else t
+
+        output_targets = [
+            (spec, np.atleast_1d(val)) for spec, val in targets
+            if isinstance(spec, PortReference)
+            ]
+        state_targets = [
+            (spec, np.atleast_1d(val)) for spec, val in targets
+            if not isinstance(spec, PortReference)
+            ]
+        pinned_blocks = {blk for blk, _ in state_targets}
+        unpinned = [b for b in self._blocks_dyn if b not in pinned_blocks]
+
+        #unknown vector layout: unpinned dynamic states, then free values
+        layout = []
+        z0_parts = []
+        for b in unpinned:
+            n = len(np.atleast_1d(b.state))
+            layout.append((b, "state", n))
+            z0_parts.append(np.atleast_1d(b.state).astype(float))
+        for b in free:
+            layout.append((b, "value", 1))
+            z0_parts.append(np.atleast_1d(float(b.value)))
+        z0 = np.concatenate(z0_parts) if z0_parts else np.zeros(0)
+
+        def _distribute(z):
+            i = 0
+            for b, kind, n in layout:
+                chunk = z[i:i+n]
+                if kind == "state":
+                    b.state = chunk
+                else:
+                    b.value = float(chunk[0])
+                i += n
+
+        def residual(z):
+            _distribute(z)
+            #re-apply explicit state pins every call
+            for b, val in state_targets:
+                b.state = val
+            self._update(_t)
+            r = []
+            for b in unpinned:
+                if b.op_dyn is not None:
+                    r.append(np.atleast_1d(b.op_dyn(b.state, b.inputs.to_array(), _t)))
+                else:
+                    r.append(np.atleast_1d(b.derivative(_t)))
+            for spec, val in output_targets:
+                r.append(spec.get_outputs() - val)
+            return np.concatenate(r)
+
+        self.logger.info(f"TRIM -> STARTING (unknowns: {len(z0)})")
+
+        with Timer(verbose=False) as T:
+            z_final, res, iters = solve_root(
+                Anderson(), residual, z0,
+                tolerance=tolerance, iterations_max=iterations_max
+                )
+
+            #settle the simulation at the reported root -- 'solve_root's
+            #internal anderson-acceptance bookkeeping can otherwise leave the
+            #mutated simulation state out of sync with the value it reports
+            #as converged
+            residual(z_final)
+
+        success = bool(res < tolerance)
+        self.logger.info(
+            "TRIM -> {} (residual: {:.3e}, iters: {}, runtime: {})".format(
+                "FINISHED" if success else "FAILED", res, iters, T)
+            )
+
+        return TrimResult(success=success, residual=float(res), iterations=iters)
+
+
+    def linearize_system(self, inputs, outputs, t=None, as_block=True):
+        """Assemble a global linear state-space model of the interconnected
+        block diagram around the current operating point.
+
+        Individual blocks already support in-place linearization
+        ('linearize()'/'delinearize()'), but nothing assembles those local
+        Jacobians into one global model for the whole diagram -- that's what
+        this method does, by walking the connection graph and eliminating
+        the algebraic (feedthrough) blocks between the marked input and
+        output points.
+
+        Parameters
+        ----------
+        inputs : list[PortReference]
+            break points designating free external inputs, e.g.
+            ``[plant[0]]`` (built via 'Block.__getitem__'). Existing incoming
+            connections at these ports are treated as cut and replaced by a
+            free external input.
+        outputs : list[PortReference]
+            tap points designating system outputs, e.g. ``[plant[0]]``.
+        t : float, None
+            evaluation time for linearization, defaults to 'self.time'
+        as_block : bool
+            if True (default), wraps the result as a ready-to-use
+            'StateSpace' block (with '.state_labels'/'.input_labels'/
+            '.output_labels' attributes attached); if False, returns the
+            raw 'LinearizationResult'
+
+        Returns
+        -------
+        StateSpace | LinearizationResult
+            'LinearizationResult' is a namedtuple(A, B, C, D, state_labels,
+            input_labels, output_labels) -- the label lists are exactly the
+            'states='/'inputs='/'outputs=' kwargs expected by python-control's
+            'control.StateSpace', for a direct hand-off to that ecosystem.
+
+        Raises
+        ------
+        RuntimeError
+            if an algebraic loop survives the input break (see
+            'utils.linearization.assemble_linear_system')
+        """
+        _t = self.time if t is None else t
+
+        #evaluate the system function at the current operating point so
+        #every block's inputs/outputs/engine.state are up to date
+        self._update(_t)
+
+        with Timer(verbose=False) as T:
+            result = assemble_linear_system(
+                self.blocks, self.connections, self._blocks_dyn,
+                inputs, outputs, _t
+                )
+
+        self.logger.info(
+            "LINEARIZE_SYSTEM -> FINISHED (states: {}, inputs: {}, outputs: {}, runtime: {})".format(
+                result.A.shape[0], result.B.shape[1], result.C.shape[0], T)
+            )
+
+        if not as_block:
+            return result
+
+        from .blocks.lti import StateSpace
+        ss = StateSpace(A=result.A, B=result.B, C=result.C, D=result.D)
+        ss.state_labels = result.state_labels
+        ss.input_labels = result.input_labels
+        ss.output_labels = result.output_labels
+        return ss
 
 
     # initial timestep estimation -------------------------------------------------
