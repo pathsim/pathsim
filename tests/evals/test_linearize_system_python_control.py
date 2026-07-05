@@ -3,8 +3,7 @@
 ##            Testing 'linearize_system()' compatibility with python-control
 ##
 ##   Confirms the 'LinearizationResult' produced by 'Simulation.linearize_system()'
-##   is directly usable by 'control.StateSpace', with no adapter/glue code --
-##   see discussion pathsim/pathsim#195 (python-control integration).
+##   is directly usable by 'control.StateSpace', with no adapter/glue code.
 ##
 ########################################################################################
 

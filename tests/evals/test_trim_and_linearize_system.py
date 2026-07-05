@@ -5,7 +5,7 @@
 ##   Verifies the system-level trim (fix output values / block states and
 ##   solve for free unknowns) and the global linearization (assembling a
 ##   single '(A, B, C, D)' state-space model from an interconnected block
-##   diagram), see discussion pathsim/pathsim#195.
+##   diagram).
 ##
 ########################################################################################
 
@@ -25,9 +25,7 @@ class TestTrim(unittest.TestCase):
     """
     Test 'Simulation.trim' on a nonlinear plant with a free input.
 
-    System: dx/dt = -x^2 + u, y = x
-    Unlike 'steadystate()' (which can only drive dx/dt=0 given whatever
-    input is already wired), 'trim()' solves backwards for the 'Constant'
+    System: dx/dt = -x^2 + u, y = x. Solves backwards for the 'Constant'
     input value that produces a desired output.
     """
 

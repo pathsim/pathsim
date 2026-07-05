@@ -1223,10 +1223,6 @@ class Simulation:
         (every unpinned dynamic block state, plus the '.value' of any
         'Constant' blocks passed in 'free').
 
-        Unlike 'steadystate()', which can only drive every dynamic block to
-        ``dx/dt = 0`` given whatever inputs are already wired, 'trim()' can
-        solve backwards for the input value that produces a desired output.
-
         Parameters
         ----------
         targets : list[tuple]
@@ -1324,14 +1320,9 @@ class Simulation:
 
     def linearize_system(self, inputs, outputs, t=None, as_block=True):
         """Assemble a global linear state-space model of the interconnected
-        block diagram around the current operating point.
-
-        Individual blocks already support in-place linearization
-        ('linearize()'/'delinearize()'), but nothing assembles those local
-        Jacobians into one global model for the whole diagram -- that's what
-        this method does, by walking the connection graph and eliminating
-        the algebraic (feedthrough) blocks between the marked input and
-        output points.
+        block diagram around the current operating point, by walking the
+        connection graph and eliminating the algebraic (feedthrough) blocks
+        between the marked input and output points.
 
         Parameters
         ----------
@@ -1361,8 +1352,9 @@ class Simulation:
         Raises
         ------
         RuntimeError
-            if an algebraic loop survives the input break (see
-            'utils.linearization.assemble_linear_system')
+            if an algebraic loop survives the input break, i.e. a true
+            instantaneous cycle remains among the algebraic blocks once the
+            marked inputs are cut
         """
         _t = self.time if t is None else t
 

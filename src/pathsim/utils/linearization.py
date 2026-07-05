@@ -91,8 +91,8 @@ def linearize_block(block, t):
     """Return the local '(A, B, C, D)' Jacobians of a single block at its
     current operating point.
 
-    Dispatches on the block's internal operator setup (see 'Block.linearize')
-    rather than the block's concrete type, so it works uniformly across the
+    Dispatches on the block's internal operator setup rather than its
+    concrete type, so it works uniformly across the
     different patterns found in the block library: full dynamic blocks with
     both 'op_dyn'/'op_alg' (e.g. 'StateSpace', 'DynamicalSystem'), dynamic
     blocks with only 'op_dyn' and an implicit output (e.g. 'ODE'), dynamic
@@ -189,10 +189,10 @@ def _break_connections(connections, broken):
 # LABELING ================================================================================
 #
 # Human-readable identifiers for the rows/columns of the assembled matrices,
-# following the same 'ClassName_index' scheme 'Simulation._checkpoint_key'
-# already uses to disambiguate multiple instances of the same block type.
-# These are exactly the 'states=' / 'inputs=' / 'outputs=' kwargs expected by
-# python-control's 'control.StateSpace', not just cosmetic metadata.
+# using a 'ClassName_index' scheme to disambiguate multiple instances of the
+# same block type. These are exactly the 'states=' / 'inputs=' / 'outputs='
+# kwargs expected by python-control's 'control.StateSpace', not just
+# cosmetic metadata.
 
 def _state_labels(blocks_dyn):
     """One label per state row, in the same order as the assembled 'A'/'B'.
@@ -326,8 +326,9 @@ def assemble_linear_system(blocks, connections, blocks_dyn, inputs, outputs, t):
             row = pr.block.inputs._map(port)
             Uin[pr.block][row, offset + i] = 1.0
 
-    #walk the DAG in topological order, mirroring 'Simulation._dag()':
-    #each block's Xin/Uin are fully resolved by the time it is visited
+    #walk the DAG in topological order: each block's Xin/Uin are fully
+    #resolved by the time it is visited, the same invariant a Gauss-Seidel
+    #sweep over the block diagram relies on
     for _, blks, cons in temp_graph.dag():
         for blk in blks:
             A_i, B_i, C_i, D_i = linearize_block(blk, t)
