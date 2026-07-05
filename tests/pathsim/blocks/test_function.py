@@ -225,18 +225,55 @@ class TestDynamicalFunction(unittest.TestCase):
 
     def test_embedding_miso(self):
 
-        def f(u, t): 
+        def f(u, t):
             a, b, c = u
             return (a**2 + b - c) * t
-        
+
         F = DynamicalFunction(func=f)
 
         def src(t): return np.sin(t), np.cos(t), np.tanh(t)
         def ref(t): return (np.sin(t)**2 + np.cos(t) - np.tanh(t))*t
-        
+
         E = Embedding(F, src, ref)
 
         for t in range(10): self.assertEqual(*E.check_MIMO(t))
+
+
+    def test_linearization_miso(self):
+        """test linearization and delinearization
+
+        regression test for a bug where 'Block.linearize' crashed with a
+        'TypeError' for stateless blocks whose 'op_alg' is a
+        'DynamicOperator' (as opposed to a plain 'Operator'), because it
+        called 'op_alg.linearize(u)' with a single argument regardless of
+        which operator type was involved
+        """
+
+        def f(u, t):
+            a, b, c = u
+            return (a**2 + b - c) * t
+
+        F = DynamicalFunction(func=f)
+
+        def src(t): return np.cos(t), t, 3.0
+        def ref(t): return (np.cos(t)**2 + t - 3.0) * t
+
+        E = Embedding(F, src, ref)
+
+        for t in range(10):
+            self.assertEqual(*E.check_MIMO(t))
+
+        #linearize block
+        F.linearize(t)
+
+        a, b = E.check_MIMO(t)
+        self.assertAlmostEqual(np.linalg.norm(a-b), 0, 8)
+
+        #delinearize
+        F.delinearize()
+
+        for t in range(10):
+            self.assertEqual(*E.check_MIMO(t))
 
 
 # RUN TESTS LOCALLY ====================================================================

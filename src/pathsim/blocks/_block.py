@@ -16,6 +16,7 @@ from functools import lru_cache
 from ..utils.deprecation import deprecated
 from ..utils.register import Register
 from ..utils.portreference import PortReference
+from ..optim.operator import DynamicOperator
 
 
 # HELPERS ===============================================================================
@@ -372,8 +373,12 @@ class Block:
 
         #no engine -> stateless
         if not self.engine:
-            #linearize only algebraic operator 
-            if self.op_alg: self.op_alg.linearize(u)
+            #linearize only algebraic operator
+            if self.op_alg:
+                if isinstance(self.op_alg, DynamicOperator):
+                    self.op_alg.linearize(None, u, t)
+                else:
+                    self.op_alg.linearize(u)
         else:
             #linearize algebraic and dynamic operators
             if self.op_alg: self.op_alg.linearize(x, u, t)
