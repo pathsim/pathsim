@@ -124,6 +124,8 @@ class Register:
         #convert to scalar if needed to avoid numpy deprecation warning
         if isinstance(value, np.ndarray) and value.ndim == 0:
             value = value.item()
+        elif isinstance(value, np.ndarray) and value.size == 1 and isinstance(key, int):
+            value = value.item()
 
         self._data[key] = value
 
@@ -170,7 +172,11 @@ class Register:
         arr : np.ndarray, list, tuple, float
             array or scalar that is used to update internal register values
         """
-        if isinstance(arr, (np.ndarray, list, tuple)):
+        #0-d arrays (e.g. from scipy interpolators called on a scalar) have
+        #no length and are semantically scalars, not sequences
+        if isinstance(arr, np.ndarray) and arr.ndim == 0:
+            self._data[0] = arr.item()
+        elif isinstance(arr, (np.ndarray, list, tuple)):
             n = len(arr)
             if n > len(self._data):
                 self.resize(n)
