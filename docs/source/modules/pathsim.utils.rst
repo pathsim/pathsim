@@ -50,6 +50,12 @@ Helper tools and utility classes for analysis, visualization, and system managem
 
       Fast array-based register for block inputs and outputs.
 
+   .. grid-item-card:: Carrier
+      :link: pathsim.utils.carrier
+      :link-type: doc
+
+      Group multiple channels of a block register into a named port.
+
    .. grid-item-card:: Gilbert Realization
       :link: pathsim.utils.gilbert
       :link-type: doc
@@ -64,6 +70,7 @@ Helper tools and utility classes for analysis, visualization, and system managem
 
    pathsim.utils.adaptivebuffer
    pathsim.utils.analysis
+   pathsim.utils.carrier
    pathsim.utils.gilbert
    pathsim.utils.logger
    pathsim.utils.portreference

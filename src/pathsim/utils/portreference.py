@@ -9,6 +9,8 @@
 
 import numpy as np
 
+from .carrier import Carrier
+
 
 # CLASS =================================================================================
 
@@ -65,8 +67,98 @@ class PortReference:
 
 
     def __len__(self):
-        """The number of ports managed by 'PortReference'"""
-        return len(self.ports)
+        """The number of channels managed by 'PortReference'. A port that is
+        a `Carrier` counts with all of its channels.
+        """
+        return sum(
+            len(c) if c is not None else 1
+            for c in (self._get_carrier(p) for p in self.ports)
+            )
+
+
+    def __getitem__(self, key):
+        """Reference to a single channel of a port that is a `Carrier`,
+        either by channel name or by channel position.
+
+        Parameters
+        ----------
+        key : int, str
+            channel name or channel position within the carrier
+
+        Returns
+        -------
+        PortReference
+            container object that holds the block reference and the channel
+        """
+        carrier = self._get_carrier(self.ports[0]) if len(self.ports) == 1 else None
+        if carrier is None:
+            raise ValueError(f"Ports '{self.ports}' of Block {self.block} are no single carrier!")
+        return PortReference(self.block, [carrier[key]])
+
+
+    def __getattr__(self, key):
+        """Channel of a port that is a `Carrier` by name, this is an
+        alias for the '__getitem__' method.
+
+        Parameters
+        ----------
+        key : str
+            channel name within the carrier
+
+        Returns
+        -------
+        PortReference
+            container object that holds the block reference and the channel
+        """
+        if key.startswith("_"):
+            raise AttributeError(key)
+        return self[key]
+
+
+    def _get_carrier(self, port):
+        """Get the `Carrier` a port refers to, or 'None' if the port is a
+        plain channel. Both registers are checked, because a `PortReference`
+        does not know its direction.
+
+        Parameters
+        ----------
+        port : int, str
+            port index or port name
+
+        Returns
+        -------
+        carrier : Carrier | None
+            carrier of the port, 'None' for plain channels
+        """
+        for register in (self.block.outputs, self.block.inputs):
+            _port = register._mapping.get(port)
+            if isinstance(_port, Carrier):
+                return _port
+        return None
+
+
+    def _resolve(self, register):
+        """Resolve the ports to integer indices in a register, expanding
+        the ports that are carriers to all of their channels.
+
+        Parameters
+        ----------
+        register : Register
+            register of the block to resolve the ports in
+
+        Returns
+        -------
+        indices : np.ndarray[int]
+            channel indices of the ports in the register
+        """
+        indices = []
+        for p in self.ports:
+            _port = register._map(p)
+            if isinstance(_port, Carrier):
+                indices.extend(_port)
+            else:
+                indices.append(_port)
+        return np.array(indices, dtype=np.intp)
 
 
     def _get_input_indices(self):
@@ -75,15 +167,13 @@ class PortReference:
         """
         if self._input_indices is None:
 
-            # Resolve indices/aliases through mapping   
-            self._input_indices = np.array([
-                self.block.inputs._map(p) for p in self.ports
-                ], dtype=np.intp)
+            # Resolve indices/aliases through mapping
+            self._input_indices = self._resolve(self.block.inputs)
 
             # Resize register to accommodate indices
             max_idx = self._input_indices.max()
             self.block.inputs.resize(max_idx + 1)
-                                    
+
         return self._input_indices
 
 
@@ -93,15 +183,13 @@ class PortReference:
         """
         if self._output_indices is None:
 
-            # Resolve indices/aliases through mapping            
-            self._output_indices = np.array([
-                self.block.outputs._map(p) for p in self.ports
-                ], dtype=np.intp)
+            # Resolve indices/aliases through mapping
+            self._output_indices = self._resolve(self.block.outputs)
 
             # Resize register to accommodate indices
             max_idx = self._output_indices.max()
             self.block.outputs.resize(max_idx + 1)
-        
+
         return self._output_indices
 
 
