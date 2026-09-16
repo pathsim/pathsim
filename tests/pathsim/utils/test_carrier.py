@@ -12,7 +12,8 @@
 import unittest
 import numpy as np
 
-from pathsim import Connection
+from pathsim import Simulation, Connection, Subsystem, Interface
+from pathsim.blocks import Amplifier
 from pathsim.blocks._block import Block
 from pathsim.utils.carrier import Carrier, Vector
 
@@ -216,13 +217,55 @@ class TestCarrierPorts(unittest.TestCase):
     def test_component_access(self):
         src, _ = self.make_blocks()
 
-        #by attribute and by key
-        self.assertEqual(src["out"].T.ports, [1])
-        self.assertEqual(src["out"]["T"].ports, [1])
-        self.assertEqual(src["out"][2].ports, [2])
+        #by attribute, by key and by position, kept symbolic
+        self.assertEqual(src["out"].T.ports, [("out", "T")])
+        self.assertEqual(src["out"]["T"].ports, [("out", "T")])
+        self.assertEqual(src["out"][2].ports, [("out", 2)])
+
+        #resolved in the register of the direction
+        np.testing.assert_array_equal(src["out"].T._get_output_indices(), [1])
+        np.testing.assert_array_equal(src["out"][2]._get_output_indices(), [2])
 
         #only for a single carrier port
         with self.assertRaises(ValueError): src[0]["T"]
+        with self.assertRaises(ValueError): src["out"]["x"]
+        with self.assertRaises(ValueError): src["out"][3]
+
+        #missing attributes behave like attributes
+        self.assertFalse(hasattr(src["out"], "x"))
+        self.assertFalse(hasattr(src[0], "T"))
+        with self.assertRaises(AttributeError): src["out"].x
+
+
+    def test_direction(self):
+
+        #same port name, different carriers for inputs and outputs
+        class Heater(Block):
+            input_port_labels = {"stream": Carrier(keys=("F", "T"))}
+            output_port_labels = {"Q": 0, "stream": Carrier(1, keys=("F", "T", "P"))}
+
+        H = Heater()
+
+        #channels resolve per direction
+        np.testing.assert_array_equal(H["stream"].T._get_input_indices(), [1])
+        np.testing.assert_array_equal(H["stream"].T._get_output_indices(), [2])
+
+        #width per direction
+        self.assertEqual(H["stream"]._size(H.inputs), 2)
+        self.assertEqual(H["stream"]._size(H.outputs), 3)
+
+        #channel that only exists for the outputs
+        PR = H["stream"].P
+        PR._validate_output_ports()
+        with self.assertRaises(ValueError): PR._validate_input_ports()
+
+        #connections check the width of the respective direction
+        class Sink(Block):
+            input_port_labels = {"in": Carrier(keys=("F", "T", "P"))}
+
+        S = Sink()
+        self.assertEqual(len(Connection(H["stream"], S["in"])), 3)
+        with self.assertRaises(ValueError): Connection(S["in"], H["stream"])
 
 
     def test_connection(self):
@@ -250,6 +293,63 @@ class TestCarrierPorts(unittest.TestCase):
         #carrier width has to match
         with self.assertRaises(ValueError): Connection(src["out"], snk["Q"])
         with self.assertRaises(ValueError): Connection(src["out"].F, snk["in"])
+
+
+    def test_connection_conflict(self):
+        src, snk = self.make_blocks()
+
+        #whole carrier and a single channel of it target the same channel
+        with self.assertRaises(ValueError):
+            Simulation(
+                [src, snk],
+                [Connection(src["out"], snk["in"]), Connection(src["out"].F, snk["in"].T)],
+                log=False
+                )
+
+
+    def test_subsystem(self):
+
+        class Source(Block):
+            output_port_labels = {"out": Carrier(keys=("F", "T", "P"))}
+
+            def __init__(self, value):
+                super().__init__()
+                self.value = value
+
+            def update(self, t):
+                self.outputs["out"] = self.value
+
+        class Sink(Block):
+            input_port_labels = {"in": Carrier(keys=("F", "T", "P"))}
+
+        #subsystem with carrier ports, amplifies all channels
+        If = Interface()
+        If.register_port_map(
+            {"out": Carrier(keys=("F", "T", "P"))},
+            {"in": Carrier(keys=("F", "T", "P"))}
+            )
+        amp = Amplifier(2.0)
+
+        sub = Subsystem(
+            [If, amp],
+            [Connection(If["in"], amp[0:3]), Connection(amp[0:3], If["out"])]
+            )
+
+        src = Source(np.array([1.0, 2.0, 3.0]))
+        snk = Sink()
+
+        sim = Simulation(
+            [src, sub, snk],
+            [Connection(src["out"], sub["in"]), Connection(sub["out"], snk["in"])],
+            dt=0.1,
+            log=False
+            )
+        sim.run(0.2)
+
+        np.testing.assert_array_almost_equal(snk.inputs["in"], [2.0, 4.0, 6.0])
+
+        #single channel through the subsystem
+        self.assertEqual(len(Connection(sub["out"].T, snk["in"].T)), 1)
 
 
 # RUN TESTS LOCALLY ====================================================================

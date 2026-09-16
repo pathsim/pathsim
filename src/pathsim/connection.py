@@ -169,8 +169,8 @@ class Connection:
 
 
     def __len__(self):
-        """Returns the number of ports that are defined in the connection"""
-        return len(self.source)
+        """Returns the number of channels that are defined in the connection"""
+        return self.source._size(self.source.block.outputs)
 
 
     def __bool__(self):
@@ -199,9 +199,10 @@ class Connection:
         """Check the dimensions of the source and target ports, 
         if they dont match, raises an exception.
         """
-        n_src = len(self.source)
+        #ports that are carriers count with all of their channels
+        n_src = self.source._size(self.source.block.outputs)
         for trg in self.targets:
-            if len(trg) != n_src:
+            if trg._size(trg.block.inputs) != n_src:
                 raise ValueError(f"Source and target have different number of ports!")
 
 
