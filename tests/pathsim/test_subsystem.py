@@ -15,9 +15,11 @@ import numpy as np
 from pathsim.subsystem import Subsystem, Interface
 
 #for testing
-from pathsim.blocks import Block
+from pathsim.blocks import Block, Integrator, Amplifier, Constant, Scope
 from pathsim.blocks.dynsys import DynamicalSystem
 from pathsim.connection import Connection
+from pathsim.simulation import Simulation
+from pathsim.solvers import SSPRK22
 
 
 # TESTS ================================================================================
@@ -220,12 +222,12 @@ class TestSubsystem(unittest.TestCase):
         C1 = Connection(I1, B1)
         C2 = Connection(B1, I1)
         S = Subsystem(
-            blocks=[I1, B1], 
+            blocks=[I1, B1],
             connections=[C1, C2]
-            ) 
+            )
 
-        #should be 1
-        self.assertEqual(len(S), 0)
+        #algebraic passthrough from the subsystem inputs to its outputs
+        self.assertEqual(len(S), 1)
 
 
     def test_call(self):
@@ -433,7 +435,68 @@ class TestSubsystem(unittest.TestCase):
         S = Subsystem(blocks=[I1, B1], connections=[C1, C2])
 
         # Interface has algebraic path to itself
+        self.assertEqual(len(S), 1)
+
+
+    def test_len_dynamic_interior(self):
+        """A dynamic block on the only path breaks the passthrough"""
+        I1 = Interface()
+        B1 = Block()
+        I2 = Integrator()
+
+        S = Subsystem(
+            blocks=[I1, B1, I2],
+            connections=[Connection(I1, B1), Connection(B1, I2), Connection(I2, I1)]
+            )
+
         self.assertEqual(len(S), 0)
+
+
+    def test_len_direct_passthrough(self):
+        """A direct connection from the interface to itself is a passthrough"""
+        I1 = Interface()
+        S = Subsystem(blocks=[I1], connections=[Connection(I1, I1)])
+
+        self.assertEqual(len(S), 1)
+
+
+    def test_len_no_return_path(self):
+        """Inputs that never reach the outputs are no passthrough"""
+        I1 = Interface()
+        B1 = Block()
+        S = Subsystem(blocks=[I1, B1], connections=[Connection(I1, B1)])
+
+        self.assertEqual(len(S), 0)
+
+
+    def test_passthrough_series_without_delay(self):
+        """Purely algebraic subsystems in series introduce no delay,
+        see pathsim issue #251"""
+
+        def make_gain(g):
+            I1 = Interface()
+            A1 = Amplifier(g)
+            return Subsystem(
+                blocks=[I1, A1],
+                connections=[Connection(I1, A1), Connection(A1, I1)]
+                )
+
+        C1 = Constant(1.0)
+        G1 = make_gain(2.0)
+        G2 = make_gain(5.0)
+        Sc = Scope()
+
+        Sim = Simulation(
+            blocks=[C1, G1, G2, Sc],
+            connections=[Connection(C1, G1), Connection(G1, G2), Connection(G2, Sc)],
+            Solver=SSPRK22,
+            dt=0.01,
+            log=False
+            )
+        Sim.run(0.05)
+
+        _, [y] = Sc.read()
+        np.testing.assert_array_almost_equal(y, np.full_like(y, 10.0))
 
 
     def test_graph(self): pass

@@ -246,6 +246,45 @@ class TestGraph(unittest.TestCase):
         self.assertTrue(g.is_algebraic_path(self.add2, self.amp1))
         self.assertTrue(g.is_algebraic_path(self.amp1, self.add2))
 
+        # A block in the loop has an algebraic path back to itself
+        self.assertTrue(g.is_algebraic_path(self.add2, self.add2))
+        self.assertTrue(g.is_algebraic_path(self.amp1, self.amp1))
+
+
+    def test_is_algebraic_path_self_loop_dynamic(self):
+        """Test is_algebraic_path does not report loops through dynamic blocks."""
+
+        g = Graph(self.nodes_dyn_loop, self.conns_dyn_loop)
+
+        # Loop: int1 -> int2 -> int1, broken by the integrators
+        self.assertFalse(g.is_algebraic_path(self.int1, self.int1))
+
+
+    def test_is_algebraic_path_direct_self_connection(self):
+        """Test is_algebraic_path with a direct self-connection."""
+
+        amp = Amplifier(gain=2)
+        g = Graph([amp], [Connection(amp, amp)])
+
+        self.assertTrue(g.is_algebraic_path(amp, amp))
+
+
+    def test_is_algebraic_path_self_loop_bounding_block(self):
+        """Test is_algebraic_path where the block bounding the self-loop is 
+        not algebraic, like the 'Interface' of a 'Subsystem'."""
+
+        # Algebraic return path
+        itg = Integrator()
+        amp = Amplifier(gain=2)
+        g = Graph([itg, amp], [Connection(itg, amp), Connection(amp, itg)])
+        self.assertTrue(g.is_algebraic_path(itg, itg))
+
+        # No return path
+        itg = Integrator()
+        amp = Amplifier(gain=2)
+        g = Graph([itg, amp], [Connection(itg, amp)])
+        self.assertFalse(g.is_algebraic_path(itg, itg))
+
 
     def test_is_algebraic_path_no_connection(self):
         """Test is_algebraic_path with unconnected blocks."""
