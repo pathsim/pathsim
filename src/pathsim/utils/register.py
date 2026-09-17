@@ -9,6 +9,8 @@
 
 import numpy as np
 
+from .carrier import Carrier
+
 
 # CLASSES ===============================================================================
 
@@ -62,7 +64,9 @@ class Register:
 
     def _get_max_index(self, key):
         """Identify max index from different key types."""
-        if isinstance(key, int):
+        if isinstance(key, Carrier):
+            return key.stop - 1
+        elif isinstance(key, int):
             return key
         elif isinstance(key, slice):
             return key.stop - 1 if key.stop is not None else -1
@@ -91,14 +95,22 @@ class Register:
 
         Returns
         -------
-        out : float, obj
-            value from port at `key` position
+        out : float, np.ndarray, obj
+            value from port at `key` position, array of values
+            for a port that is a `Carrier`
         """
         if isinstance(key, str):
             key = self._map(key)
-            if not isinstance(key, int):
+            if not isinstance(key, (int, Carrier)):
                 return 0.0
-        
+
+        #carrier covers a range of channels -> return all of them
+        if isinstance(key, Carrier):
+            vals = np.zeros(len(key))
+            n = max(0, min(key.stop, len(self._data)) - key.start)
+            vals[:n] = self._data[key.start:key.start+n]
+            return vals
+
         if isinstance(key, int):
             if key < 0 or key >= len(self._data):
                 return 0.0
@@ -118,16 +130,22 @@ class Register:
         val : float, obj
             value to set at port
         """
-        max_idx = self._get_max_index(self._map(key))
+        _key = self._map(key)
+        max_idx = self._get_max_index(_key)
         self.resize(max_idx + 1)
+
+        #carrier covers a range of channels -> set all of them
+        if isinstance(_key, Carrier):
+            self._data[_key.slice] = value
+            return
 
         #convert to scalar if needed to avoid numpy deprecation warning
         if isinstance(value, np.ndarray) and value.ndim == 0:
             value = value.item()
-        elif isinstance(value, np.ndarray) and value.size == 1 and isinstance(key, int):
+        elif isinstance(value, np.ndarray) and value.size == 1 and isinstance(_key, int):
             value = value.item()
 
-        self._data[key] = value
+        self._data[_key] = value
 
 
     def resize(self, size):
