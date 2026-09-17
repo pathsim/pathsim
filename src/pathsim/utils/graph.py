@@ -606,8 +606,10 @@ class Graph:
     def _has_algebraic_self_loop(self, block):
         """Check if a block has an algebraic path back to itself.
 
-        For self-loops, verifies that the path actually leaves the block and
-        returns through other algebraic blocks (not just a direct self-connection).
+        The path leaves the block and returns through algebraic blocks. The
+        block itself only bounds the path, so it doesn't have to be algebraic.
+        This is the case for the 'Interface' of a 'Subsystem', where a path
+        back to itself is an algebraic passthrough of the subsystem.
 
         Parameters
         ----------
@@ -619,18 +621,14 @@ class Graph:
         bool
             True if an algebraic self-loop exists, False otherwise
         """
-        # Check if block is algebraic
-        if block in self._dyn_blocks:
-            return False
-        
         # Get immediate neighbors
         neighbors = self._dnst_blk_blk_map[block]
-        
+
         if not neighbors:
             return False
-        
+
         # BFS from neighbors to see if any path back
-        visited = {block}  # Don't revisit start immediately
+        visited = set()
         stack = list(neighbors)
         
         while stack:
