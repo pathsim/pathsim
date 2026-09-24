@@ -93,6 +93,40 @@ class TestSemiExplicitDAE(unittest.TestCase):
             )
 
 
+    def _make_block_with_jacs(self):
+        f_dyn = lambda x, z, u, t: -x + z
+        f_alg = lambda x, z, u, t: z - x**2
+        return SemiExplicitDAE(
+            f_dyn, f_alg, initial_value=0.5, z0=0.25,
+            jac_z=lambda x, z, u, t: np.array([[1.0]]),
+            jac_dyn_x=lambda x, z, u, t: np.array([[-1.0]]),
+            jac_dyn_z=lambda x, z, u, t: np.array([[1.0]]),
+            jac_alg_x=lambda x, z, u, t: np.array([[-2.0*x[0]]])
+            )
+
+
+    def test_reduced_jac_analytic_matches_numerical(self):
+        #x' = x**2 - x  ->  reduced J = 2x - 1
+        dae_num = self._make_block()
+        dae_ana = self._make_block_with_jacs()
+
+        x, u = np.array([0.3]), np.array([0.0])
+        J_ana = dae_ana.op_dyn.jac_x(x, u, 0.0)
+        J_num = dae_num.op_dyn.jac_x(x, u, 0.0)
+        np.testing.assert_allclose(J_ana, [[2*0.3 - 1]], atol=1e-12)
+        np.testing.assert_allclose(J_num, [[2*0.3 - 1]], atol=1e-6)
+
+
+    def test_reduced_jac_requires_all_jacobians(self):
+        #partial jacobians alone keep the finite difference fallback
+        dae = SemiExplicitDAE(
+            lambda x, z, u, t: -x + z, lambda x, z, u, t: z - x**2, 0.5, 0.25,
+            jac_dyn_x=lambda x, z, u, t: np.array([[-1.0]])
+            )
+        self.assertIsNone(dae.op_dyn._jac_x)
+        self.assertIsNotNone(self._make_block_with_jacs().op_dyn._jac_x)
+
+
     def test_reset(self):
         dae = self._make_block()
         dae.set_solver(ESDIRK43, None)
@@ -104,7 +138,8 @@ class TestSemiExplicitDAE(unittest.TestCase):
     def test_info(self):
         info = SemiExplicitDAE.info()
         self.assertEqual(info["type"], "SemiExplicitDAE")
-        for p in ("func_dyn", "func_alg", "initial_value", "z0", "jac_z"):
+        for p in ("func_dyn", "func_alg", "initial_value", "z0", "jac_z",
+                  "jac_dyn_x", "jac_dyn_z", "jac_alg_x"):
             self.assertIn(p, info["parameters"])
 
 
@@ -115,6 +150,28 @@ class TestSemiExplicitDAE(unittest.TestCase):
         from pathsim.blocks import Scope
 
         dae = self._make_block()
+        sco = Scope()
+
+        sim = Simulation(
+            blocks=[dae, sco],
+            connections=[Connection(dae[0], sco[0])],
+            dt=0.01,
+            Solver=ESDIRK43,
+            log=False
+            )
+        sim.run(2.0)
+
+        x_exact, z_exact = self._exact(2.0)
+        self.assertAlmostEqual(float(dae.engine.state[0]), x_exact, places=4)
+        self.assertAlmostEqual(float(dae._z[0]), z_exact, places=4)
+
+
+    def test_simulation_with_analytic_jacobians(self):
+        #same reference problem, integrated with the analytic reduced jacobian
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Scope
+
+        dae = self._make_block_with_jacs()
         sco = Scope()
 
         sim = Simulation(

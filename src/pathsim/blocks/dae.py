@@ -54,10 +54,22 @@ class SemiExplicitDAE(Block):
     Note
     ----
     The reduced Jacobian :math:`\\partial \\dot{x} / \\partial x` handed to
-    implicit solvers is obtained from central finite differences through the
-    eliminated constraint. An analytical Jacobian :math:`\\partial
-    f_\\mathrm{alg} / \\partial z` accelerates the inner constraint solve and
-    can be supplied via `jac_z`.
+    implicit solvers follows from the implicit function theorem,
+
+    .. math::
+
+        \\frac{\\partial \\dot{x}}{\\partial x}
+        = \\frac{\\partial f_\\mathrm{dyn}}{\\partial x}
+        - \\frac{\\partial f_\\mathrm{dyn}}{\\partial z}
+          \\left(\\frac{\\partial f_\\mathrm{alg}}{\\partial z}\\right)^{-1}
+          \\frac{\\partial f_\\mathrm{alg}}{\\partial x}
+
+    It is used analytically when `jac_z`, `jac_dyn_x`, `jac_dyn_z` and
+    `jac_alg_x` are all supplied, otherwise it is approximated by central
+    finite differences through the eliminated constraint, which requires one
+    constraint solve per differential state and becomes expensive for large
+    systems. An analytical `jac_z` alone accelerates the inner constraint
+    solve.
 
     Example
     -------
@@ -99,6 +111,15 @@ class SemiExplicitDAE(Block):
         optional analytical jacobian of `func_alg` with respect to `z` with
         signature `jac_z(x, z, u, t)`, central finite differences are used if
         `None`
+    jac_dyn_x : callable, None
+        optional analytical jacobian of `func_dyn` with respect to `x` with
+        signature `jac_dyn_x(x, z, u, t)`, used for the reduced jacobian
+    jac_dyn_z : callable, None
+        optional analytical jacobian of `func_dyn` with respect to `z` with
+        signature `jac_dyn_z(x, z, u, t)`, used for the reduced jacobian
+    jac_alg_x : callable, None
+        optional analytical jacobian of `func_alg` with respect to `x` with
+        signature `jac_alg_x(x, z, u, t)`, used for the reduced jacobian
 
     Attributes
     ----------
@@ -117,7 +138,10 @@ class SemiExplicitDAE(Block):
         func_alg=lambda x, z, u, t: z,
         initial_value=0.0,
         z0=0.0,
-        jac_z=None
+        jac_z=None,
+        jac_dyn_x=None,
+        jac_dyn_z=None,
+        jac_alg_x=None
         ):
 
         super().__init__()
@@ -128,6 +152,11 @@ class SemiExplicitDAE(Block):
 
         #optional analytical jacobian of the constraint w.r.t. z
         self.jac_z = jac_z
+
+        #optional analytical jacobians for the reduced jacobian
+        self.jac_dyn_x = jac_dyn_x
+        self.jac_dyn_z = jac_dyn_z
+        self.jac_alg_x = jac_alg_x
 
         #initial condition of the differential states (drives the engine)
         self.initial_value = np.atleast_1d(initial_value).astype(float)
@@ -140,8 +169,12 @@ class SemiExplicitDAE(Block):
         self.opt = NewtonAnderson()
 
         #dynamic operator for the reduced right hand side, mirrors the ODE block
-        #and supplies the engine Jacobian through 'op_dyn.jac_x'
-        self.op_dyn = DynamicOperator(func=self._rhs)
+        #and supplies the engine Jacobian through 'op_dyn.jac_x'; the reduced
+        #Jacobian is analytic (implicit function theorem) when all jacobians
+        #are given, otherwise the operator falls back to finite differences
+        _all_jacs = (jac_z, jac_dyn_x, jac_dyn_z, jac_alg_x)
+        _jac_x = self._reduced_jac if all(j is not None for j in _all_jacs) else None
+        self.op_dyn = DynamicOperator(func=self._rhs, jac_x=_jac_x)
 
         #pre-size the output register to the stacked state [x, z]
         self.outputs.update_from_array(
@@ -211,6 +244,33 @@ class SemiExplicitDAE(Block):
             derivative of the differential states
         """
         return self.func_dyn(x, self._solve_z(x, u, t), u, t)
+
+
+    def _reduced_jac(self, x, u, t):
+        """Analytical reduced Jacobian from the implicit function theorem,
+        :math:`f_x - f_z (g_z)^{-1} g_x` with the dynamic part `f` and the
+        algebraic constraint `g`.
+
+        Parameters
+        ----------
+        x : array[float]
+            current differential states
+        u : array[float]
+            current block input
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        J : array[array[float]]
+            reduced jacobian of the differential states
+        """
+        z = self._solve_z(x, u, t)
+        fx = np.atleast_2d(self.jac_dyn_x(x, z, u, t))
+        fz = np.atleast_2d(self.jac_dyn_z(x, z, u, t))
+        gx = np.atleast_2d(self.jac_alg_x(x, z, u, t))
+        gz = np.atleast_2d(self.jac_z(x, z, u, t))
+        return fx - fz @ np.linalg.solve(gz, gx)
 
 
     def update(self, t):
