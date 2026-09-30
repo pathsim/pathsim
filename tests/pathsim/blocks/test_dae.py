@@ -14,6 +14,8 @@ from pathsim.blocks.dae import SemiExplicitDAE, MassMatrixDAE, FullyImplicitDAE
 
 from pathsim.solvers.esdirk43 import ESDIRK43
 
+from pathsim._constants import SOL_TOLERANCE_FPI
+
 
 # TESTS ================================================================================
 
@@ -139,8 +141,36 @@ class TestSemiExplicitDAE(unittest.TestCase):
         info = SemiExplicitDAE.info()
         self.assertEqual(info["type"], "SemiExplicitDAE")
         for p in ("func_dyn", "func_alg", "initial_value", "z0", "jac_z",
-                  "jac_dyn_x", "jac_dyn_z", "jac_alg_x"):
+                  "jac_dyn_x", "jac_dyn_z", "jac_alg_x", "tolerance"):
             self.assertIn(p, info["parameters"])
+
+
+    def test_tolerance_default(self):
+        self.assertEqual(self._make_block().tolerance, SOL_TOLERANCE_FPI)
+
+
+    def test_tolerance_residual_floor(self):
+        #roundoff-like noise floor of ~1e-6 on the constraint residual: the
+        #default tolerance is unreachable and the solve exhausts its iterations,
+        #a tolerance above the floor converges in a few iterations
+        calls = []
+        def f_alg(x, z, u, t):
+            calls.append(1)
+            return z - x + 1e-6*np.sin(1e8*z)
+
+        x, u = np.array([0.3]), np.array([0.0])
+        n_calls = []
+        for tol in (SOL_TOLERANCE_FPI, 1e-5):
+            dae = SemiExplicitDAE(
+                lambda x, z, u, t: -x + z, f_alg, 0.5, 0.0,
+                jac_z=lambda x, z, u, t: np.array([[1.0]]), tolerance=tol
+                )
+            calls.clear()
+            z = dae._solve_z(x, u, 0.0)
+            n_calls.append(len(calls))
+
+        self.assertAlmostEqual(float(z[0]), 0.3, places=5)
+        self.assertLess(n_calls[1], n_calls[0] / 10)
 
 
     def test_simulation_matches_analytic(self):
@@ -266,8 +296,23 @@ class TestMassMatrixDAE(unittest.TestCase):
     def test_info(self):
         info = MassMatrixDAE.info()
         self.assertEqual(info["type"], "MassMatrixDAE")
-        for p in ("func", "mass", "initial_value", "jac"):
+        for p in ("func", "mass", "initial_value", "jac", "tolerance"):
             self.assertIn(p, info["parameters"])
+
+    def test_tolerance(self):
+        #a loose tolerance is met by the algebraic solve and ends it early
+        M = np.array([[1.0, 0.0], [0.0, 0.0]])
+        func = lambda x, u, t: np.array([-x[0] + x[1], x[1]**3 - x[0]])
+        dae_def = MassMatrixDAE(func, M, [1.0, 2.0])
+        dae_tol = MassMatrixDAE(func, M, [1.0, 2.0], tolerance=1e-2)
+        self.assertEqual(dae_def.tolerance, SOL_TOLERANCE_FPI)
+
+        x_d, u = np.array([1.0]), np.array([0.0])
+        xa_def = dae_def._solve_xa(x_d, u, 0.0)
+        xa_tol = dae_tol._solve_xa(x_d, u, 0.0)
+        self.assertLess(abs(float(xa_def[0])**3 - 1.0), 1e-9)
+        self.assertLess(abs(float(xa_tol[0])**3 - 1.0), 1e-2)
+        self.assertGreater(abs(float(xa_tol[0])**3 - 1.0), 1e-9)
 
     def test_simulation_nonsingular(self):
         #2 x0' = -x0,  x1' = -x1  ->  x0 = exp(-t/2),  x1 = exp(-t)
@@ -368,8 +413,22 @@ class TestFullyImplicitDAE(unittest.TestCase):
     def test_info(self):
         info = FullyImplicitDAE.info()
         self.assertEqual(info["type"], "FullyImplicitDAE")
-        for p in ("func", "initial_value", "jac_x", "jac_xdot"):
+        for p in ("func", "initial_value", "jac_x", "jac_xdot", "tolerance"):
             self.assertIn(p, info["parameters"])
+
+    def test_tolerance(self):
+        #a loose tolerance is met by the derivative solve and ends it early
+        func = lambda x, xdot, u, t: xdot**3 + xdot + x
+        dae_def = FullyImplicitDAE(func, initial_value=-1.0)
+        dae_tol = FullyImplicitDAE(func, initial_value=-1.0, tolerance=1e-2)
+        self.assertEqual(dae_def.tolerance, SOL_TOLERANCE_FPI)
+
+        x, u = np.array([-1.0]), np.array([0.0])
+        res_def = abs(float(func(x, dae_def._solve_xdot(x, u, 0.0), u, 0.0)[0]))
+        res_tol = abs(float(func(x, dae_tol._solve_xdot(x, u, 0.0), u, 0.0)[0]))
+        self.assertLess(res_def, 1e-9)
+        self.assertLess(res_tol, 1e-2)
+        self.assertGreater(res_tol, 1e-9)
 
     def test_simulation_autonomous(self):
         #F = xdot + x = 0  ->  x' = -x  ->  x = exp(-t)
