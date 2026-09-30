@@ -16,6 +16,8 @@ from ._block import Block
 from ..optim.operator import DynamicOperator
 from ..optim.anderson import NewtonAnderson, solve_root
 
+from .._constants import SOL_TOLERANCE_FPI
+
 
 # BLOCKS ================================================================================
 
@@ -120,6 +122,10 @@ class SemiExplicitDAE(Block):
     jac_alg_x : callable, None
         optional analytical jacobian of `func_alg` with respect to `x` with
         signature `jac_alg_x(x, z, u, t)`, used for the reduced jacobian
+    tolerance : float
+        convergence tolerance on the residual norm of the algebraic constraint
+        solve, loosen it for ill-conditioned constraints whose residual cannot
+        reach the default due to roundoff
 
     Attributes
     ----------
@@ -141,7 +147,8 @@ class SemiExplicitDAE(Block):
         jac_z=None,
         jac_dyn_x=None,
         jac_dyn_z=None,
-        jac_alg_x=None
+        jac_alg_x=None,
+        tolerance=SOL_TOLERANCE_FPI
         ):
 
         super().__init__()
@@ -149,6 +156,9 @@ class SemiExplicitDAE(Block):
         #differential and algebraic right hand side functions
         self.func_dyn = func_dyn
         self.func_alg = func_alg
+
+        #convergence tolerance of the algebraic constraint solve
+        self.tolerance = tolerance
 
         #optional analytical jacobian of the constraint w.r.t. z
         self.jac_z = jac_z
@@ -221,7 +231,7 @@ class SemiExplicitDAE(Block):
         """
         _func = lambda z: self.func_alg(x, z, u, t)
         _jac = None if self.jac_z is None else (lambda z: self.jac_z(x, z, u, t))
-        z, _, _ = solve_root(self.opt, _func, self._z, _jac)
+        z, _, _ = solve_root(self.opt, _func, self._z, _jac, tolerance=self.tolerance)
         return z
 
 
@@ -414,6 +424,10 @@ class MassMatrixDAE(Block):
     jac : callable, None
         optional analytical jacobian of `func` with respect to `x` with
         signature `jac(x, u, t)`, central finite differences are used if `None`
+    tolerance : float
+        convergence tolerance on the residual norm of the algebraic constraint
+        solve, loosen it for ill-conditioned constraints whose residual cannot
+        reach the default due to roundoff
 
     Attributes
     ----------
@@ -427,12 +441,23 @@ class MassMatrixDAE(Block):
         internal Newton-Anderson optimizer for the algebraic constraints
     """
 
-    def __init__(self, func=lambda x, u, t: -x, mass=1.0, initial_value=0.0, jac=None):
+    def __init__(
+        self,
+        func=lambda x, u, t: -x,
+        mass=1.0,
+        initial_value=0.0,
+        jac=None,
+        tolerance=SOL_TOLERANCE_FPI
+        ):
+
         super().__init__()
 
         #right hand side and optional analytical jacobian
         self.func = func
         self.jac = jac
+
+        #convergence tolerance of the algebraic constraint solve
+        self.tolerance = tolerance
 
         #constant mass matrix
         M = np.atleast_2d(np.asarray(mass, dtype=float))
@@ -556,7 +581,7 @@ class MassMatrixDAE(Block):
                 x[self._d], x[self._a] = x_d, xa
                 return np.atleast_2d(self.jac(x, u, t))[np.ix_(self._a, self._a)]
 
-        xa, _, _ = solve_root(self.opt, _res, self._xa, _jac)
+        xa, _, _ = solve_root(self.opt, _res, self._xa, _jac, tolerance=self.tolerance)
         return xa
 
 
@@ -726,6 +751,10 @@ class FullyImplicitDAE(Block):
         signature `jac_xdot(x, xdot, u, t)`, accelerates the inner solve and is
         used for the reduced jacobian, central finite differences are used if
         `None`
+    tolerance : float
+        convergence tolerance on the residual norm of the state derivative
+        solve, loosen it for ill-conditioned residuals that cannot reach the
+        default due to roundoff
 
     Attributes
     ----------
@@ -742,7 +771,8 @@ class FullyImplicitDAE(Block):
         func=lambda x, xdot, u, t: xdot + x,
         initial_value=0.0,
         jac_x=None,
-        jac_xdot=None
+        jac_xdot=None,
+        tolerance=SOL_TOLERANCE_FPI
         ):
 
         super().__init__()
@@ -751,6 +781,9 @@ class FullyImplicitDAE(Block):
         self.func = func
         self.jac_x = jac_x
         self.jac_xdot = jac_xdot
+
+        #convergence tolerance of the state derivative solve
+        self.tolerance = tolerance
 
         #initial condition of the state (drives the engine)
         self.initial_value = np.atleast_1d(initial_value).astype(float)
@@ -806,7 +839,7 @@ class FullyImplicitDAE(Block):
         _res = lambda xd: self.func(x, xd, u, t)
         _jac = None if self.jac_xdot is None \
             else (lambda xd: self.jac_xdot(x, xd, u, t))
-        xdot, _, _ = solve_root(self.opt, _res, self._xdot, _jac)
+        xdot, _, _ = solve_root(self.opt, _res, self._xdot, _jac, tolerance=self.tolerance)
         return xdot
 
 
