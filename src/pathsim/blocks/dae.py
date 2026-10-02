@@ -491,9 +491,18 @@ class MassMatrixDAE(Block):
                 "to the derivatives of algebraic states"
                 )
 
-        #LU factorisation of the (constant) differential mass block
-        ## TODO: Handle the case when M[np.ix_(self._d_equations, self._d)] is rectangular
-        self._lu = lu_factor(M[np.ix_(self._d_equations, self._d)])
+        #factorise the constant differential mass block when it is square; use
+        #the pseudoinverse for rectangular reduced systems so underdetermined
+        #differential blocks still admit a minimum-norm solution.
+        self._d_mass = M[np.ix_(self._d_equations, self._d)]
+        if self._d_mass.shape[0] == self._d_mass.shape[1]:
+            self._lu = lu_factor(self._d_mass)
+            self._solve_mass_rhs = lambda rhs: lu_solve(self._lu, rhs)
+            self._solve_mass_matrix = lambda mat: lu_solve(self._lu, mat)
+        else:
+            self._d_mass_pinv = np.linalg.pinv(self._d_mass)
+            self._solve_mass_rhs = lambda rhs: self._d_mass_pinv @ rhs
+            self._solve_mass_matrix = lambda mat: self._d_mass_pinv @ mat
 
         #the engine integrates only the differential states
         self.initial_value = x0[self._d]
@@ -509,7 +518,9 @@ class MassMatrixDAE(Block):
         #when 'jac' is given, otherwise the operator falls back to finite differences
         _jac_x = None
         if self._a.size == 0 and jac is not None:
-            _jac_x = lambda x, u, t: lu_solve(self._lu, np.atleast_2d(jac(x, u, t)))
+            def _jac_x(x, u, t):
+                J = np.atleast_2d(jac(x, u, t))[np.ix_(self._d_equations, self._d)]
+                return self._solve_mass_matrix(J)
         self.op_dyn = DynamicOperator(func=self._rhs, jac_x=_jac_x)
 
         #pre-size the output register to the full state
@@ -585,7 +596,7 @@ class MassMatrixDAE(Block):
             def _jac(xa):
                 x = np.empty(self.mass.shape[0])
                 x[self._d], x[self._a] = x_d, xa
-                return np.atleast_2d(self.jac(x, u, t))[np.ix_(self._a_equations, self._a)]
+                return np.atleast_2d(self.jac(x, u, t))[np.ix_(self._a, self._a)]
 
         xa, _, _ = solve_root(self.opt, _res, self._xa, _jac, tolerance=self.tolerance)
         return xa
@@ -615,7 +626,7 @@ class MassMatrixDAE(Block):
             xa = self._solve_xa(x_d, u, t)
             x = np.empty(self.mass.shape[0])
             x[self._d], x[self._a] = x_d, xa
-        return lu_solve(self._lu, self.func(x, u, t)[self._d])
+        return self._solve_mass_rhs(self.func(x, u, t)[self._d_equations])
 
 
     def update(self, t):
@@ -652,7 +663,8 @@ class MassMatrixDAE(Block):
 
         #commit the warm-start at the current state, then linearize around it
         self._xa = self._solve_xa(x_d, u, t)
-        f = lu_solve(self._lu, self.func(self._full(x_d), u, t)[self._d])
+        f = self._solve_mass_rhs(self.func(self._full(x_d), u, t)[self._d_equations])
+
         J = self.op_dyn.jac_x(x_d, u, t)
 
         return self.engine.solve(f, J, dt)
@@ -679,7 +691,7 @@ class MassMatrixDAE(Block):
         """
         x_d, u = self.engine.state, self.inputs.to_array()
         self._xa = self._solve_xa(x_d, u, t)
-        f = lu_solve(self._lu, self.func(self._full(x_d), u, t)[self._d])
+        f = self._solve_mass_rhs(self.func(self._full(x_d), u, t)[self._d_equations])
         return self.engine.step(f, dt)
 
 
