@@ -479,15 +479,21 @@ class MassMatrixDAE(Block):
         self._d = np.flatnonzero(_nonzero_column)
         self._a = np.flatnonzero(~_nonzero_column)
 
+        #partition into differential (nonzero row) and algebraic (zero row) equations
+        _non_zero_rows = np.any(M != 0.0, axis=1)
+        self._d_equations = np.flatnonzero(_non_zero_rows)
+        self._a_equations = np.flatnonzero(~_non_zero_rows)
+
         #index-1 form: differential rows must not weight algebraic derivatives
-        if self._a.size and np.any(M[np.ix_(self._d, self._a)] != 0.0):
+        if self._a.size and np.any(M[np.ix_(self._d_equations, self._a)] != 0.0):
             raise ValueError(
                 "mass matrix is not in index-1 form: differential rows couple "
                 "to the derivatives of algebraic states"
                 )
 
         #LU factorisation of the (constant) differential mass block
-        self._lu = lu_factor(M[np.ix_(self._d, self._d)])
+        ## TODO: Handle the case when M[np.ix_(self._d_equations, self._d)] is rectangular
+        self._lu = lu_factor(M[np.ix_(self._d_equations, self._d)])
 
         #the engine integrates only the differential states
         self.initial_value = x0[self._d]
