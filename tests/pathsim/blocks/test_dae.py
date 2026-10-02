@@ -351,7 +351,7 @@ class TestMassMatrixDAE(unittest.TestCase):
         from pathsim.blocks import Constant, Scope
         M = np.array([[1.0, 1.0], [0.0, 0.0]])
         func = lambda x, u, t: np.array([1., x[0] - x[1]])
-        MassMatrixDAE(func, M, initial_value=[0.0, 0.0])
+        dae = MassMatrixDAE(func, M, initial_value=[0.0, 0.0])
         sco = Scope()
         sim = Simulation(
             blocks=[dae, sco],
