@@ -500,9 +500,28 @@ class MassMatrixDAE(Block):
             self._solve_mass_rhs = lambda rhs: lu_solve(self._lu, rhs)
             self._solve_mass_matrix = lambda mat: lu_solve(self._lu, mat)
         else:
-            self._d_mass_pinv = np.linalg.pinv(self._d_mass)
-            self._solve_mass_rhs = lambda rhs: self._d_mass_pinv @ rhs
-            self._solve_mass_matrix = lambda mat: self._d_mass_pinv @ mat
+            # Use SVD once and apply the pseudoinverse implicitly for stability
+            # and to avoid forming a dense pseudoinverse matrix.
+            U, s, Vt = np.linalg.svd(self._d_mass, full_matrices=False)
+            eps = np.finfo(float).eps
+            tol = max(self._d_mass.shape) * (s.max() if s.size else 0.0) * eps
+            s_inv = np.array([1.0/si if si > tol else 0.0 for si in s])
+
+            # store factors (optional) and set solver callables
+            self._svd_U = U
+            self._svd_s_inv = s_inv
+            self._svd_Vt = Vt
+
+            def _solve_mass_rhs(rhs):
+                # rhs can be vector or matrix; apply V * S_inv * (U.T @ rhs)
+                return (Vt.T * s_inv) @ (U.T @ rhs)
+
+            def _solve_mass_matrix(mat):
+                # mat: matrix of columns to be solved
+                return (Vt.T * s_inv) @ (U.T @ mat)
+
+            self._solve_mass_rhs = _solve_mass_rhs
+            self._solve_mass_matrix = _solve_mass_matrix
 
         #the engine integrates only the differential states
         self.initial_value = x0[self._d]
