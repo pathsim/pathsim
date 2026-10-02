@@ -474,7 +474,7 @@ class MassMatrixDAE(Block):
                 )
         self._x0 = x0
 
-        #partition into differential (nonzero row) and algebraic (zero row) states
+        #partition into differential (nonzero column) and algebraic (zero column) states
         _nonzero_column = np.any(M != 0.0, axis=0)
         self._d = np.flatnonzero(_nonzero_column)
         self._a = np.flatnonzero(~_nonzero_column)
