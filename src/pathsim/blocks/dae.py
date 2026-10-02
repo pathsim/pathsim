@@ -585,7 +585,7 @@ class MassMatrixDAE(Block):
             def _jac(xa):
                 x = np.empty(self.mass.shape[0])
                 x[self._d], x[self._a] = x_d, xa
-                return np.atleast_2d(self.jac(x, u, t))[np.ix_(self._a, self._a)]
+                return np.atleast_2d(self.jac(x, u, t))[np.ix_(self._a_equations, self._a)]
 
         xa, _, _ = solve_root(self.opt, _res, self._xa, _jac, tolerance=self.tolerance)
         return xa
