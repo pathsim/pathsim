@@ -475,9 +475,9 @@ class MassMatrixDAE(Block):
         self._x0 = x0
 
         #partition into differential (nonzero row) and algebraic (zero row) states
-        _nonzero_row = np.any(M != 0.0, axis=1)
-        self._d = np.flatnonzero(_nonzero_row)
-        self._a = np.flatnonzero(~_nonzero_row)
+        _nonzero_column = np.any(M != 0.0, axis=0)
+        self._d = np.flatnonzero(_nonzero_column)
+        self._a = np.flatnonzero(~_nonzero_column)
 
         #index-1 form: differential rows must not weight algebraic derivatives
         if self._a.size and np.any(M[np.ix_(self._d, self._a)] != 0.0):
