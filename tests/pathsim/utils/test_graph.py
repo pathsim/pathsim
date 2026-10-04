@@ -478,6 +478,73 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(len(g), 4)
 
 
+    def test_loop_downstream_chain(self):
+        """Schedule every loop-dependent block after its upstream component."""
+        a, b, c, d = [Amplifier(0.5) for _ in range(4)]
+        connections = [
+            Connection(a, b), Connection(b, a),
+            Connection(a, c), Connection(c, d),
+        ]
+        graph = Graph([d, c, b, a], connections)
+        levels = {block: depth for depth, blocks, _ in graph.loop() for block in blocks}
+
+        self.assertEqual(set(levels), {a, b, c, d})
+        self.assertGreater(levels[c], max(levels[a], levels[b]))
+        self.assertGreater(levels[d], levels[c])
+        self.assertEqual(len(graph.loop_closing_connections()), 1)
+
+
+    def test_loop_downstream_merge(self):
+        """Merged branches wait for both of their loop-dependent inputs."""
+        a, b, c, d, e = [Amplifier(0.5) for _ in range(5)]
+        merge = Adder()
+        connections = [
+            Connection(a, b), Connection(b, a),
+            Connection(a, c), Connection(a, d), Connection(d, e),
+            Connection(c, merge[0]), Connection(e, merge[1]),
+        ]
+        blocks = [merge, e, d, c, b, a]
+        graph = Graph(blocks, connections)
+        levels = {block: depth for depth, nodes, _ in graph.loop() for block in nodes}
+
+        self.assertEqual(set(levels), set(blocks))
+        self.assertGreater(levels[merge], max(levels[c], levels[e]))
+        self.assertGreater(levels[e], levels[d])
+        self.assertEqual(len(graph.loop_closing_connections()), 1)
+
+
+    def test_connected_loops_with_downstream_blocks(self):
+        """Order connected cycles and the acyclic blocks between them."""
+        a, b, bridge, c, d, tail = [Adder() for _ in range(6)]
+        connections = [
+            Connection(a, b), Connection(b, a), Connection(a, bridge),
+            Connection(bridge, c[0]), Connection(c, d), Connection(d, c[1]),
+            Connection(c, tail),
+        ]
+        blocks = [tail, d, c, bridge, b, a]
+        graph = Graph(blocks, connections)
+        levels = {block: depth for depth, nodes, _ in graph.loop() for block in nodes}
+
+        self.assertEqual(set(levels), set(blocks))
+        self.assertGreater(levels[bridge], max(levels[a], levels[b]))
+        self.assertGreater(min(levels[c], levels[d]), levels[bridge])
+        self.assertGreater(levels[tail], max(levels[c], levels[d]))
+        self.assertEqual(len(graph.loop_closing_connections()), 2)
+
+
+    def test_self_loop_with_downstream_block(self):
+        """Keep a self-loop's accelerator without treating its tail as a cycle."""
+        a, tail = Amplifier(0.5), Amplifier(2)
+        feedback = Connection(a, a)
+        downstream = Connection(a, tail)
+        graph = Graph([tail, a], [feedback, downstream])
+        levels = {block: depth for depth, nodes, _ in graph.loop() for block in nodes}
+
+        self.assertEqual(set(levels), {a, tail})
+        self.assertGreater(levels[tail], levels[a])
+        self.assertEqual(graph.loop_closing_connections(), [feedback])
+
+
     def test_dag_empty_when_only_loops(self):
         """Test that DAG is empty when graph only contains loops."""
 

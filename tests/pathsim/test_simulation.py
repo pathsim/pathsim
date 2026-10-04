@@ -51,6 +51,78 @@ class TestSimulation(unittest.TestCase):
     only very minimal functonality
     """
 
+    def test_algebraic_loop_downstream_chain(self):
+        """Evaluate acyclic descendants of a converged algebraic loop."""
+        a = Function(lambda b: 0.5 * b + 1)
+        b = Function(lambda a: 0.5 * a)
+        c = Function(lambda a: a + 10)
+        d = Function(lambda c: 2 * c)
+        simulation = Simulation(
+            blocks=[d, c, b, a],
+            connections=[
+                Connection(a, b), Connection(b, a),
+                Connection(a, c), Connection(c, d),
+            ],
+            log=False,
+        )
+        simulation.run(0.01)
+
+        self.assertAlmostEqual(a.outputs[0], 4 / 3)
+        self.assertAlmostEqual(b.outputs[0], 2 / 3)
+        self.assertAlmostEqual(c.outputs[0], 4 / 3 + 10)
+        self.assertAlmostEqual(d.outputs[0], 2 * (4 / 3 + 10))
+
+
+    def test_algebraic_loop_downstream_merge(self):
+        """Propagate both branches before evaluating their merged output."""
+        a = Function(lambda a: 0.5 * a + 1)
+        short = Function(lambda a: a + 10)
+        long = Function(lambda a: 3 * a)
+        end = Function(lambda value: value + 20)
+        merge = Adder()
+        simulation = Simulation(
+            blocks=[merge, end, long, short, a],
+            connections=[
+                Connection(a, a), Connection(a, short), Connection(a, long),
+                Connection(long, end),
+                Connection(short, merge[0]), Connection(end, merge[1]),
+            ],
+            log=False,
+        )
+        simulation.run(0.01)
+
+        self.assertAlmostEqual(a.outputs[0], 2)
+        self.assertAlmostEqual(short.outputs[0], 12)
+        self.assertAlmostEqual(end.outputs[0], 26)
+        self.assertAlmostEqual(merge.outputs[0], 38)
+
+
+    def test_connected_algebraic_loops_with_downstream_blocks(self):
+        """Evaluate a second feedback loop after its upstream loop and bridge."""
+        a = Function(lambda b: 0.5 * b + 1)
+        b = Function(lambda a: 0.5 * a)
+        bridge = Function(lambda a: a)
+        c = Function(lambda upstream, d: upstream + 0.5 * d)
+        d = Function(lambda c: 0.5 * c)
+        tail = Function(lambda c: c + 10)
+        simulation = Simulation(
+            blocks=[tail, d, c, bridge, b, a],
+            connections=[
+                Connection(a, b), Connection(b, a), Connection(a, bridge),
+                Connection(bridge, c[0]), Connection(c, d), Connection(d, c[1]),
+                Connection(c, tail),
+            ],
+            log=False,
+        )
+        simulation.run(0.01)
+
+        self.assertAlmostEqual(a.outputs[0], 4 / 3)
+        self.assertAlmostEqual(bridge.outputs[0], 4 / 3)
+        self.assertAlmostEqual(c.outputs[0], 16 / 9)
+        self.assertAlmostEqual(d.outputs[0], 8 / 9)
+        self.assertAlmostEqual(tail.outputs[0], 16 / 9 + 10)
+
+
     def test_init_default(self):
 
         #test default initialization
