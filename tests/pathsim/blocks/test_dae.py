@@ -272,9 +272,6 @@ class TestMassMatrixDAE(unittest.TestCase):
             MassMatrixDAE(func, np.ones((2, 3)), initial_value=[0.0, 0.0])
         with self.assertRaises(ValueError):
             MassMatrixDAE(func, np.eye(2), initial_value=[0.0])
-        M_bad = np.array([[1.0, 1.0], [0.0, 0.0]])
-        with self.assertRaises(ValueError):
-            MassMatrixDAE(func, M_bad, initial_value=[0.0, 0.0])
 
     def test_passthrough(self):
         dae_ns = MassMatrixDAE(lambda x, u, t: -x, np.eye(2), [1.0, 1.0])
@@ -292,6 +289,7 @@ class TestMassMatrixDAE(unittest.TestCase):
         dae._xa = np.array([5.0])
         dae.reset()
         np.testing.assert_array_equal(dae._xa, dae._x0[dae._a])
+
 
     def test_info(self):
         info = MassMatrixDAE.info()
@@ -347,6 +345,21 @@ class TestMassMatrixDAE(unittest.TestCase):
             )
         sim.run(1.0)
         self.assertAlmostEqual(float(dae.engine.state[0]), np.exp(-0.5), places=4)
+
+    def test_nonsymmetric_singular(self):
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Constant, Scope
+        M = np.array([[1.0, 1.0], [0.0, 0.0]])
+        func = lambda x, u, t: np.array([1., x[0] - x[1]])
+        dae = MassMatrixDAE(func, M, initial_value=[0.0, 0.0])
+        sco = Scope()
+        sim = Simulation(
+            blocks=[dae, sco],
+            connections=[Connection(dae[0], sco[0])],
+            dt=0.01, Solver=ESDIRK43, log=False
+            )
+        sim.run(1.0)
+        np.testing.assert_allclose(dae.outputs.to_array(), [0.5, 0.5], atol=1e-3)
 
     def test_simulation_singular_with_input(self):
         #x0' = -x0 + x1,  0 = x0 + x1 - u   =>   steady state x -> u/2
