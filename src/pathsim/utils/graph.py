@@ -331,19 +331,22 @@ class Graph:
         """Optimized loop processing with minimal overhead.
 
         Finds strongly connected components (SCCs) within the loop blocks, determines
-        entry points for each SCC, and performs BFS to assign local depths. Identifies
+        entry points for each SCC, and performs BFS to assign local depths. Includes
+        acyclic descendants in dependency order alongside cycles. Identifies
         loop-closing connections (back edges) that need special handling.
 
         Parameters
         ----------
         blocks_loop : set
-            set of blocks that are part of algebraic loops
+            set of blocks that are part of or depend on algebraic loops
         """
         if not blocks_loop:
             return
 
-        # Find SCCs (already optimized)
-        sccs = self._find_strongly_connected_components(blocks_loop)
+        # Tarjan emits downstream components before their upstream dependencies.
+        # Reverse that order so each component receives updated upstream outputs
+        # before it is evaluated in the same loop-solver iteration.
+        sccs = reversed(self._find_strongly_connected_components(blocks_loop))
         
         current_depth = 0
 
@@ -433,7 +436,7 @@ class Graph:
     def _find_strongly_connected_components(self, blocks):
         """Iterative Tarjan's algorithm using cleaner state machine.
 
-        Finds strongly connected components (cycles) within the given blocks using
+        Finds all strongly connected components within the given blocks using
         an iterative implementation of Tarjan's algorithm. Avoids recursion limits
         that can occur with deep graphs.
 
@@ -445,7 +448,7 @@ class Graph:
         Returns
         -------
         list
-            list of SCCs, where each SCC is a list of blocks forming a cycle
+            list of SCCs in reverse topological order, including acyclic singletons
         """
         if not blocks:
             return []
@@ -508,11 +511,12 @@ class Graph:
                             if w == node:
                                 break
                         
-                        # Keep only actual cycles
-                        if len(scc) > 1:
-                            result.append(scc)
-                        elif scc[0] in successors_cache[scc[0]]:
-                            result.append(scc)
+                        # A block downstream of a loop can form a singleton SCC
+                        # without being part of a cycle. Its loop dependency keeps
+                        # it out of the ordinary DAG schedule, so discarding it here
+                        # would leave it unevaluated. Keep it in the loop schedule;
+                        # only actual cycle-closing connections receive acceleration.
+                        result.append(scc)
                     
                     # Update parent's lowlink if there is a parent
                     if work_stack:
