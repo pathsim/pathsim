@@ -115,16 +115,19 @@ class Graph:
     def _validate_connections(self):
         """Fast O(N) validation that no connections overwrite each other.
         
-        Checks that no two connections target the same (block, port) pair.
+        Checks that no two connections target the same (block, channel) pair.
+        Ports are resolved to channel indices first, so port names, ports that
+        are carriers and single carrier channels are compared on the channels
+        they actually cover.
         """
-        # {(block, port_idx): connection}
+        # {(block, channel_idx): connection}
         connected_targets = set()
-        
+
         for connection in self.connections:
             for target in connection.targets:
                 target_block = target.block
-                for port_idx in target.ports:
-                    key = (target_block, port_idx)
+                for port_idx in target._resolve(target_block.inputs):
+                    key = (target_block, int(port_idx))
                     if key in connected_targets:
                         raise ValueError(
                             f"Connection conflict detected"

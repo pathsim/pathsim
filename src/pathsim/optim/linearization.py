@@ -69,9 +69,12 @@ def _state_labels(x_layout, keys):
     return labels
 
 
-def _port_labels(port_refs, keys):
-    """One label per resolved port across a list of 'PortReference', in the
+def _port_labels(port_refs, keys, inputs=True):
+    """One label per resolved channel across a list of 'PortReference', in the
     same order as the assembled 'B' columns or 'C' and 'D' rows.
+
+    Ports that are carriers get one label per channel, named by the channel
+    key or by the channel position for carriers without keys.
 
     Parameters
     ----------
@@ -79,18 +82,31 @@ def _port_labels(port_refs, keys):
         break points or tap points
     keys : dict[Block: str]
         canonical identifiers from '_block_keys'
+    inputs : bool
+        resolve the ports in the block inputs, otherwise in the block outputs
 
     Returns
     -------
     labels : list[str]
-        one label per port
+        one label per channel
     """
     labels = []
     for pr in port_refs:
-        if len(pr.ports) == 1:
+        register = pr.block.inputs if inputs else pr.block.outputs
+
+        #single channel -> block identifier only
+        if pr._size(register) == 1:
             labels.append(keys[pr.block])
-        else:
-            labels.extend(f"{keys[pr.block]}[{p}]" for p in pr.ports)
+            continue
+
+        for p in pr.ports:
+            carrier = None if isinstance(p, tuple) else pr._get_carrier(p, register)
+            if carrier is None:
+                name = f"{p[0]}.{p[1]}" if isinstance(p, tuple) else p
+                labels.append(f"{keys[pr.block]}[{name}]")
+            else:
+                names = carrier.keys or range(len(carrier))
+                labels.extend(f"{keys[pr.block]}[{p}.{k}]" for k in names)
     return labels
 
 
@@ -305,6 +321,6 @@ def assemble_statespace(blocks, connections, inputs, outputs, t):
     return (
         A, B, C, D,
         _state_labels(x_layout, keys),
-        _port_labels(inputs, keys),
-        _port_labels(outputs, keys)
+        _port_labels(inputs, keys, inputs=True),
+        _port_labels(outputs, keys, inputs=False)
         )
