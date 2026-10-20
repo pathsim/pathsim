@@ -16,6 +16,7 @@ import numpy as np
 from functools import lru_cache
 
 from ..utils.deprecation import deprecated
+from ..utils.carrier import Carrier
 from ..utils.register import Register
 from ..utils.portreference import PortReference
 from ..optim.operator import DynamicOperator
@@ -27,16 +28,16 @@ from ..exceptions import LinearizationError
 def _labels_size(labels):
     """Minimum register size required to hold all declared port labels.
 
-    Port labels map string aliases to integer port indices. The register has
-    to be large enough to address the highest declared index, otherwise blocks
-    with unconnected declared ports (e.g. a multi-input block placed without
-    connections) would default to the size 1 register and break positional
-    input access.
+    Port labels map string aliases to integer port indices or to a `Carrier`
+    that groups multiple channels. The register has to be large enough to
+    address the highest declared index, otherwise blocks with unconnected
+    declared ports (e.g. a multi-input block placed without connections)
+    would default to the size 1 register and break positional input access.
 
     Parameters
     ----------
-    labels : dict[str: int] | None
-        port label mapping (alias -> index)
+    labels : dict[str: int, str: Carrier] | None
+        port label mapping (alias -> index, alias -> carrier)
 
     Returns
     -------
@@ -45,7 +46,10 @@ def _labels_size(labels):
     """
     if not labels:
         return None
-    return max(labels.values()) + 1
+    return max(
+        p.stop if isinstance(p, Carrier) else p + 1
+        for p in labels.values()
+        )
 
 
 # BASE BLOCK CLASS ======================================================================
