@@ -8,13 +8,17 @@
 # IMPORTS ===============================================================================
 
 import numpy as np
+import scipy.sparse as sp
 
 from scipy.linalg import lu_factor, lu_solve
 
 from ._block import Block
 
+from ..utils.register import Register
+
 from ..optim.operator import DynamicOperator
-from ..optim.anderson import NewtonAnderson, solve_root
+from ..optim.jacobian import NewtonOperator
+from ..optim.anderson import NewtonAnderson, solve_root, _factorize_sparse
 
 from .._constants import SOL_TOLERANCE_FPI
 
@@ -1002,3 +1006,474 @@ class FullyImplicitDAE(Block):
         x, u = self.engine.state, self.inputs.to_array()
         self._xdot = self._solve_xdot(x, u, t)
         return self.engine.step(self._xdot, dt)
+
+
+class SparseLinearDAE(Block):
+    """Large sparse linear differential-algebraic equation (DAE) system.
+
+    Integrates the linear descriptor system
+
+    .. math::
+
+        \\begin{align}
+            S_1 \\, x + S_2 \\, \\dot{x} &= B \\, u \\\\
+                                       y &= C \\, x + D \\, u
+        \\end{align}
+
+    where :math:`S_1`, :math:`S_2`, :math:`B`, :math:`C` and :math:`D` are ``scipy.sparse``
+    matrices and :math:`S_2` is generally singular, so the algebraic rows
+    (rows without derivatives) are constraints.
+
+    The system is never converted to a dense matrix. The nonzero rows
+    :math:`S_{2,r}` of :math:`S_2` define the *differential states*
+    :math:`d = S_{2,r}\\,x` (for a circuit these are the capacitor charges and
+    the inductor fluxes) and with the embedding :math:`P` of these rows into the
+    full system, :math:`S_2 = P\\,S_{2,r}`, the DAE becomes
+
+    .. math::
+
+        S_1\\,x + P\\,\\dot{d} = B\\,u, \\qquad S_{2,r}\\,x = d
+
+    which is the *constant sparse linear system*
+
+    .. math::
+
+        \\begin{bmatrix} S_1 & P \\\\ S_{2,r} & 0 \\end{bmatrix}
+        \\begin{bmatrix} x \\\\ \\dot{d} \\end{bmatrix}
+        =
+        \\begin{bmatrix} B\\,u \\\\ d \\end{bmatrix}
+
+    that is factorized once with a sparse LU. Solving it yields the derivative
+    :math:`\\dot{d}(d, u)` of the differential states and the full state
+    :math:`x(d, u)`. So the block presents an ordinary explicit ODE in :math:`d`
+    to the integration engine, which therefore works with any solver, explicit
+    or implicit, including the adaptive ones, and the output
+    :math:`y = C\\,x(d, u) + D\\,u` is evaluated algebraically.
+
+    The Jacobian :math:`\\partial \\dot{d} / \\partial d` of this reduction is
+    dense (a Schur complement) and is never formed. It is handed to the
+    implicit engines as a matrix-free :class:`.NewtonOperator` that solves the
+    Newton system :math:`(c J - I)\\,y = r` of the :class:`.NewtonAnderson`
+    optimizer with one sparse factorization of
+
+    .. math::
+
+        \\begin{bmatrix} S_1 & P \\\\ S_{2,r} & -c\\,I \\end{bmatrix}
+
+    per distinct scale :math:`c` (for a fixed timestep these repeat, so the
+    factorizations are cached).
+
+    Note
+    ----
+    The reduction requires an index-1 system, which means that the matrix above
+    has to be nonsingular. For circuits this excludes capacitor loops (for
+    example parallel capacitors, or a capacitor directly across an ideal voltage
+    source) and inductor cut-sets (for example inductors in series without a
+    resistive path), where the charges / fluxes are not independent.
+    Constructing the block raises a ``ValueError`` in these cases.
+
+    The differential states :math:`d` are scaled by the row norms of
+    :math:`S_{2,r}`, so that they have the magnitude of the system variables
+    (the rows of :math:`S_{2,r}` are normalized, :math:`P` carries the scale).
+    This is an exact reformulation but matters numerically, since the
+    tolerances of the implicit engines are absolute.
+
+    The initial condition ``initial_value`` is the initial value of these
+    differential states, zero means no stored charge / flux, which is also the
+    initial condition that `ElecSolver` assumes. Use ``x0`` to specify the
+    initial condition as a full state instead.
+
+    Example
+    -------
+    An RC low-pass driven by a voltage source :math:`u`, with the unknowns
+    :math:`x = [v_1, v_2, i]`:
+
+    .. code-block:: python
+
+        import numpy as np
+        import scipy.sparse as sp
+        from pathsim.blocks import SparseLinearDAE
+
+        R, C = 1e3, 1e-6
+
+        #v1 = u,  v2 - v1 + R i = 0,  C dv2/dt - i = 0
+        S1 = sp.csr_matrix([[1., 0., 0.], [-1., 1., R], [0., 0., -1.]])
+        S2 = sp.csr_matrix([[0., 0., 0.], [0., 0., 0.], [0., C, 0.]])
+        B  = sp.csr_matrix([[1.], [0.], [0.]])
+
+        rc = SparseLinearDAE(S1, S2, B, C=sp.csr_matrix([[0., 1., 0.]]))
+
+    Parameters
+    ----------
+    S1 : scipy.sparse matrix, shape (n, n)
+        matrix of the non-differentiated states
+    S2 : scipy.sparse matrix, shape (n, n)
+        matrix of the differentiated states, may be singular
+    B : scipy.sparse matrix, shape (n, nu)
+        input matrix, one column per block input. For circuits with several
+        sources this is the superposition of the unit sources, :math:`B\\,u =
+        \\sum_k u_k b_k`
+    C : scipy.sparse matrix, shape (ny, n), None
+        output matrix, the full state :math:`y = x` is the output if `None`
+    D : scipy.sparse matrix, shape (ny, nu), None
+        direct feedthrough matrix from the inputs to the outputs, zero if `None`
+    initial_value : array[float], None
+        initial value of the differential states :math:`d`, zeros if `None`
+    x0 : array[float], None
+        initial condition as a full state, converted to :math:`d = S_{2,r}\\,x_0`,
+        takes precedence over `initial_value`
+    input_labels : list[str], None
+        port aliases for the inputs
+    output_labels : list[str], None
+        port aliases for the outputs
+
+    Attributes
+    ----------
+    engine : Solver
+        numerical integration engine for the differential states :math:`d`
+    op_dyn : DynamicOperator
+        dynamic operator of the reduced ODE :math:`\\dot{d}(d, u)`
+    op_alg : DynamicOperator
+        dynamic operator of the output :math:`y(d, u)`
+    n : int
+        number of states of the full system
+    nd : int
+        number of differential states
+    """
+
+    #number of cached factorizations of the Newton system (distinct scales 'c')
+    _NEWTON_CACHE = 8
+
+    def __init__(
+        self,
+        S1,
+        S2,
+        B,
+        C=None,
+        D=None,
+        initial_value=None,
+        x0=None,
+        input_labels=None,
+        output_labels=None
+        ):
+
+        super().__init__()
+
+        #system matrices
+        S1 = sp.csc_matrix(S1, dtype=float)
+        S2 = sp.csr_matrix(S2, dtype=float)
+        S2.eliminate_zeros()
+        n = S1.shape[0]
+
+        if S1.shape != (n, n) or S2.shape != (n, n):
+            raise ValueError(
+                f"S1 and S2 must be square and equally sized but are {S1.shape}, {S2.shape}"
+                )
+
+        B = sp.csr_matrix(B, dtype=float)
+        if B.shape[0] != n:
+            raise ValueError(f"B must have {n} rows but has {B.shape[0]}")
+
+        C = sp.identity(n, format="csr") if C is None else sp.csr_matrix(C, dtype=float)
+        if C.shape[1] != n:
+            raise ValueError(f"C must have {n} columns but has {C.shape[1]}")
+
+        self.n, self.nu, self.ny = n, B.shape[1], C.shape[0]
+
+        D = sp.csr_matrix((self.ny, self.nu)) if D is None else sp.csr_matrix(D, dtype=float)
+        if D.shape != (self.ny, self.nu):
+            raise ValueError(f"D must have shape {(self.ny, self.nu)} but has {D.shape}")
+
+        self.S1, self.S2, self.B, self.C, self.D = S1, S2, B, C, D
+
+        #differential states d = S2r x from the nonzero rows of S2
+        rows = np.flatnonzero(np.diff(S2.indptr) > 0)
+        nd = len(rows)
+        if nd == 0:
+            raise ValueError("S2 has no nonzero rows, the system has no dynamics")
+
+        self.nd = nd
+
+        #scale the differential states by the row norms of S2r, so they have the
+        #magnitude of the system variables (e.g. volts and amps instead of coulombs
+        #and webers, which can be many orders smaller). The optimizer tolerances of
+        #the implicit engines are absolute, so badly scaled states converge too early.
+        #This is an exact reformulation, S2 = P0 S2r = (P0 Dn) (Dn^-1 S2r)
+        S2r = S2[rows]
+        self._dscale = np.sqrt(np.asarray(S2r.multiply(S2r).sum(axis=1)).ravel())
+        self._S2r = sp.diags(1.0 / self._dscale) @ S2r
+        self._P = sp.csr_matrix((self._dscale, (rows, np.arange(nd))), shape=(n, nd))
+
+        #constant sparse system [[S1, P], [S2r, 0]] [x, dd] = [B u, d]
+        K = sp.bmat([[S1, self._P], [self._S2r, None]], format="csc")
+        self._lu = _factorize_sparse(K)
+        if self._lu is None:
+            raise ValueError(
+                "the DAE is not index-1: the matrix [[S1, P], [S2r, 0]] is singular. "
+                "For circuits: capacitor loops (e.g. parallel capacitors or a capacitor "
+                "across an ideal voltage source) or inductor cut-sets (e.g. series "
+                "inductors without a resistive path)."
+                )
+
+        #factorizations of the newton system for different scales 'c'
+        self._lu_newton = {}
+
+        #input dependence of the derivative and the output (dense, small: nu columns)
+        _rhs = np.zeros((n + nd, self.nu))
+        _rhs[:n] = B.toarray()
+        _sol = self._lu.solve(_rhs) if self.nu else np.zeros((n + nd, 0))
+        self._jac_u_dyn = _sol[n:]
+        self._jac_u_alg = C @ _sol[:n] + D.toarray()
+        self._feedthrough = bool(np.any(self._jac_u_alg != 0.0))
+
+        #lazily evaluated dense jacobian of the output w.r.t. the states
+        self._jac_x_alg = None
+
+        #last solution of the sparse system, shared by dynamics and output
+        self._cache = None
+
+        #initial condition of the differential states
+        if x0 is not None:
+            x0 = np.asarray(x0, dtype=float).ravel()
+            if x0.size != n:
+                raise ValueError(f"x0 must have {n} entries but has {x0.size}")
+            initial_value = self._S2r @ x0
+        self.initial_value = np.zeros(nd) if initial_value is None \
+            else np.atleast_1d(initial_value).astype(float)
+        if self.initial_value.size != nd:
+            raise ValueError(
+                f"initial_value must have {nd} entries (differential states) "
+                f"but has {self.initial_value.size}"
+                )
+
+        #matrix-free jacobian of the reduced ODE for the implicit engines
+        self._jac = NewtonOperator(
+            newton_solve=self._newton_solve,
+            matvec=self._matvec,
+            shape=(nd, nd)
+            )
+
+        #operators for the reduced dynamics and the output
+        self.op_dyn = DynamicOperator(
+            func=self._func_dyn,
+            jac_x=lambda x, u, t: self._jac,
+            jac_u=lambda x, u, t: self._jac_u_dyn
+            )
+        self.op_alg = DynamicOperator(
+            func=self._func_alg,
+            jac_x=self._jac_alg_x,
+            jac_u=lambda x, u, t: self._jac_u_alg
+            )
+
+        #pre-sized, labeled ports
+        self.inputs = Register(
+            size=self.nu,
+            mapping=None if input_labels is None else {k: i for i, k in enumerate(input_labels)}
+            )
+        self.outputs = Register(
+            size=self.ny,
+            mapping=None if output_labels is None else {k: i for i, k in enumerate(output_labels)}
+            )
+        self.outputs.update_from_array(
+            self._func_alg(self.initial_value, np.zeros(self.nu), 0.0)
+            )
+
+
+    def __len__(self):
+        """Algebraic passthrough from the inputs to the outputs exists if the
+        output depends on the input directly, e.g. a node potential that is
+        enforced by a voltage source.
+        """
+        return int(self._feedthrough) if self._active else 0
+
+
+    # sparse solves -------------------------------------------------------------------
+
+    def _solve(self, d, u):
+        """Solve the constant sparse system for the full state and the
+        derivative of the differential states. The last solution is cached since
+        the dynamics and the output are evaluated at the same point.
+
+        Parameters
+        ----------
+        d : array[float]
+            differential states
+        u : array[float]
+            block input
+
+        Returns
+        -------
+        x : array[float]
+            full state of the DAE
+        dd : array[float]
+            derivative of the differential states
+        """
+        d = np.atleast_1d(d)
+        u = np.atleast_1d(u)
+
+        if u.size != self.nu:
+            raise ValueError(
+                f"'SparseLinearDAE' expects {self.nu} inputs but got {u.size}"
+                )
+
+        if self._cache is not None \
+            and np.array_equal(d, self._cache[0]) and np.array_equal(u, self._cache[1]):
+            return self._cache[2]
+
+        sol = self._lu.solve(np.concatenate([self.B @ u, d]))
+        res = sol[:self.n], sol[self.n:]
+        self._cache = (d.copy(), u.copy(), res)
+        return res
+
+
+    def _func_dyn(self, x, u, t):
+        """Reduced explicit ODE of the differential states."""
+        return self._solve(x, u)[1]
+
+
+    def _func_alg(self, x, u, t):
+        """Output of the system."""
+        return self.C @ self._solve(x, u)[0] + self.D @ np.atleast_1d(u)
+
+
+    def _matvec(self, v):
+        """Action of the reduced jacobian 'd(dd)/dd' on a vector."""
+        sol = self._lu.solve(np.concatenate([np.zeros(self.n), v]))
+        return sol[self.n:]
+
+
+    def _newton_solve(self, c, r):
+        """Solve the Newton system '(c J - I) y = r' for the reduced jacobian 'J'
+        without forming it. With 'z = J y' this is 'c z - y = r', which together
+        with the definition of 'J' is the sparse system
+
+            [[S1, P], [S2r, -c I]] [x, z] = [0, -r]
+
+        and then 'y = c z - r'.
+
+        Parameters
+        ----------
+        c : float
+            scale of the jacobian (timestep times integrator coefficient)
+        r : array[float]
+            fixed-point residual
+
+        Returns
+        -------
+        y : array[float]
+            solution of the Newton system
+        """
+        if c == 0.0:
+            return -r
+
+        lu = self._lu_newton.get(c)
+        if lu is None:
+            Kc = sp.bmat(
+                [[self.S1, self._P], [self._S2r, -c * sp.identity(self.nd)]],
+                format="csc"
+                )
+            lu = _factorize_sparse(Kc)
+            if lu is None:
+                raise RuntimeError(
+                    f"the Newton matrix of 'SparseLinearDAE' is singular for scale {c}"
+                    )
+            if len(self._lu_newton) >= self._NEWTON_CACHE:
+                self._lu_newton.pop(next(iter(self._lu_newton)))
+            self._lu_newton[c] = lu
+
+        z = lu.solve(np.concatenate([np.zeros(self.n), -r]))[self.n:]
+        return c * z - r
+
+
+    def _jac_alg_x(self, x, u, t):
+        """Dense jacobian of the output w.r.t. the differential states, from
+        'ny' adjoint solves. Only needed for linearization, evaluated lazily.
+        """
+        if self._jac_x_alg is None:
+            rhs = np.zeros((self.n + self.nd, self.ny))
+            rhs[:self.n] = self.C.T.toarray()
+            self._jac_x_alg = self._lu.solve(rhs, trans="T")[self.n:].T
+        return self._jac_x_alg
+
+
+    # block interface -----------------------------------------------------------------
+
+    def to_statespace(self, t):
+        """Local linear state space model of the reduced system in the
+        differential states :math:`d`, with dense matrices (the reduced system
+        only has `nd` states).
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+
+        Returns
+        -------
+        A, B, C, D : np.ndarray
+            local state space matrices of the block
+        """
+        return (
+            self._jac.toarray(),
+            self._jac_u_dyn.copy(),
+            self._jac_alg_x(None, None, t).copy(),
+            self._jac_u_alg.copy()
+            )
+
+
+    def update(self, t):
+        """Update the output, which algebraically depends on the differential
+        states and the input.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        """
+        x, u = self.engine.state, self.inputs.to_array()
+        self.outputs.update_from_array(self.op_alg(x, u, t))
+
+
+    def solve(self, t, dt):
+        """Advance the implicit update equation of the solver with the reduced
+        right hand side and its matrix-free Jacobian.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        dt : float
+            integration timestep
+
+        Returns
+        -------
+        error : float
+            solver residual norm
+        """
+        x, u = self.engine.state, self.inputs.to_array()
+        f, J = self.op_dyn(x, u, t), self.op_dyn.jac_x(x, u, t)
+        return self.engine.solve(f, J, dt)
+
+
+    def step(self, t, dt):
+        """Compute the timestep update with the integration engine.
+
+        Parameters
+        ----------
+        t : float
+            evaluation time
+        dt : float
+            integration timestep
+
+        Returns
+        -------
+        success : bool
+            step was successful
+        error : float
+            local truncation error from adaptive integrators
+        scale : float
+            timestep rescale from adaptive integrators
+        """
+        x, u = self.engine.state, self.inputs.to_array()
+        f = self.op_dyn(x, u, t)
+        return self.engine.step(f, dt)

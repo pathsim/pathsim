@@ -10,8 +10,34 @@
 # IMPORTS ===============================================================================
 
 import numpy as np
+import scipy.sparse as sp
 
 from .numerical import num_jac
+from .jacobian import NewtonOperator
+
+
+# HELPERS ===============================================================================
+
+def _apply(J, v):
+    """Apply a jacobian to a vector, for dense arrays and scalars (via 'np.dot')
+    but also for sparse matrices and matrix-free 'NewtonOperator' instances,
+    where 'np.dot' does not do the right thing.
+
+    Parameters
+    ----------
+    J : float, np.ndarray, scipy.sparse matrix, NewtonOperator
+        jacobian
+    v : np.ndarray
+        vector the jacobian is applied to
+
+    Returns
+    -------
+    Jv : np.ndarray
+        jacobian-vector product
+    """
+    if sp.issparse(J) or isinstance(J, NewtonOperator):
+        return J @ v
+    return np.dot(J, v)
 
 
 # OPERATOR CLASSES ======================================================================
@@ -125,7 +151,7 @@ class Operator(object):
         if self.f0 is None: 
             return self._func(x)
         dx = np.atleast_1d(x - self.x0)
-        return self.f0 + np.dot(self.J, dx)
+        return self.f0 + _apply(self.J, dx)
         
 
     def jac(self, x):
@@ -308,11 +334,11 @@ class DynamicOperator(object):
 
         #linearization in x available
         if self.x0 is None: _fx = 0.0
-        else: _fx = np.dot(self.Jx, np.atleast_1d(x - self.x0))
+        else: _fx = _apply(self.Jx, np.atleast_1d(x - self.x0))
 
         #linearization in u available
         if self.u0 is None: _fu = 0.0
-        else: _fu = np.dot(self.Ju, np.atleast_1d(u - self.u0))
+        else: _fu = _apply(self.Ju, np.atleast_1d(u - self.u0))
         
         return self.f0 + _fx + _fu
 
