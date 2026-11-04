@@ -173,6 +173,28 @@ class TestBVP1D(unittest.TestCase):
         np.testing.assert_allclose(bvp.solution()[0, 2], 2.0*np.sin(np.pi/4), atol=1e-5)
 
 
+    def test_return_to_solved_input_after_failed_solve(self):
+        #a failed solve keeps the previous solution, returning to the input of
+        #that solution reuses it and reports success again (pathsim#275)
+        fun = lambda x, y, p, u: np.vstack([y[1], -y[0] if u[0] > 0 else np.nan*y[0]])
+        bc = lambda ya, yb, p, u: np.array([ya[0], yb[0] - u[0]])
+        bvp = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2))
+
+        bvp.inputs[0] = 2.0
+        bvp.update(0.0)
+        self.assertTrue(bvp.success)
+        y_ok = bvp.outputs.to_array()
+
+        bvp.inputs[0] = -1.0
+        bvp.update(0.0)
+        self.assertFalse(bvp.success)
+
+        bvp.inputs[0] = 2.0
+        bvp.update(0.0)
+        self.assertTrue(bvp.success)
+        np.testing.assert_array_equal(bvp.outputs.to_array(), y_ok)
+
+
     def test_input_unchanged_skips_resolve(self):
         #a re-evaluation with unchanged input must not trigger another solve,
         #but a changed input must
