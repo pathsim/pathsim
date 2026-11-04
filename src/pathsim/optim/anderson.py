@@ -336,8 +336,8 @@ class Anderson:
         #compute coefficients from least squares problem
         C, *_ = np.linalg.lstsq(dR.T, _res, rcond=None)
 
-        #new solution and residual norm
-        return _x - C @ dX, np.linalg.norm(_res)
+        #mix function values, retaining residual directions outside the history
+        return _g - C @ (dX + dR), np.linalg.norm(_res)
 
 
 
