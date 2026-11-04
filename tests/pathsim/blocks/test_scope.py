@@ -261,7 +261,6 @@ class TestScope(unittest.TestCase):
             self.assertIn("no recording", str(w[0].message))
 
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_plot_with_data(self):
         """Test plot() with recorded data"""
 
@@ -324,7 +323,6 @@ class TestScope(unittest.TestCase):
             self.assertIn("not enough channels", str(w[0].message))
 
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_plot2D_with_data(self):
         """Test plot2D() with 2 channels"""
 
@@ -408,7 +406,6 @@ class TestScope(unittest.TestCase):
             self.assertIn("at least 3 channels", str(w[0].message))
 
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_plot3D_with_data(self):
         """Test plot3D() with 3 channels"""
 

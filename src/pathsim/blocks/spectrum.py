@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from ._block import Block
 
 from ..utils.realtimeplotter import RealtimePlotter
+from ..utils.plotting import show
 from ..utils.deprecation import deprecated
 from ..utils.mutable import mutable
 
@@ -386,7 +387,7 @@ class Spectrum(Block):
         self.fig.canvas.mpl_connect("pick_event", on_pick)
 
         #show the plot without blocking following code
-        plt.show(block=False)
+        show(self.fig)
 
         #return figure and axis for outside manipulation
         return self.fig, self.ax

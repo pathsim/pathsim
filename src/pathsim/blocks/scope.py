@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from ._block import Block
 from ..events.schedule import Schedule
 from ..utils.realtimeplotter import RealtimePlotter
+from ..utils.plotting import show
 from ..utils.deprecation import deprecated
 
 from .._constants import COLORS_ALL
@@ -270,7 +271,7 @@ class Scope(Block):
         fig.canvas.mpl_connect("pick_event", on_pick)
 
         #show the plot without blocking following code
-        plt.show(block=False)
+        show(fig)
 
         #return figure and axis for outside manipulation
         return fig, ax
@@ -337,7 +338,7 @@ class Scope(Block):
         ax.grid()
 
         #show the plot without blocking following code
-        plt.show(block=False)
+        show(fig)
 
         #return figure and axis for outside manipulation
         return fig, ax
@@ -408,7 +409,7 @@ class Scope(Block):
         ax.set_zlabel(label3)
 
         #show the plot without blocking
-        plt.show(block=False)
+        show(fig)
 
         return fig, ax
 
