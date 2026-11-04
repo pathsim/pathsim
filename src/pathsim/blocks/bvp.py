@@ -252,8 +252,10 @@ class BVP1D(Block):
         u = self.inputs.to_array()
 
         #skip the solve if the boundary data is unchanged since the last
-        #successful solve; the warm-start and output are still valid
+        #successful solve; the warm-start and output are still valid, also
+        #when a solve for another input failed in between
         if self._u_last is not None and np.array_equal(u, self._u_last):
+            self.success = True
             return
 
         #scipy callbacks, with or without free parameters
