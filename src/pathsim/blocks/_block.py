@@ -16,40 +16,10 @@ import numpy as np
 from functools import lru_cache
 
 from ..utils.deprecation import deprecated
-from ..utils.carrier import Carrier
 from ..utils.register import Register
 from ..utils.portreference import PortReference
 from ..optim.operator import DynamicOperator
 from ..exceptions import LinearizationError
-
-
-# HELPERS ===============================================================================
-
-def _labels_size(labels):
-    """Minimum register size required to hold all declared port labels.
-
-    Port labels map string aliases to integer port indices or to a `Carrier`
-    that groups multiple channels. The register has to be large enough to
-    address the highest declared index, otherwise blocks with unconnected
-    declared ports (e.g. a multi-input block placed without connections)
-    would default to the size 1 register and break positional input access.
-
-    Parameters
-    ----------
-    labels : dict[str: int, str: Carrier] | None
-        port label mapping (alias -> index, alias -> carrier)
-
-    Returns
-    -------
-    size : int | None
-        minimum register size, or None if no labels are declared
-    """
-    if not labels:
-        return None
-    return max(
-        p.stop if isinstance(p, Carrier) else p + 1
-        for p in labels.values()
-        )
 
 
 # BASE BLOCK CLASS ======================================================================
@@ -127,14 +97,8 @@ class Block:
 
         #registers to hold input and output values, pre-sized to the declared
         #port labels so blocks with unconnected ports are still addressable
-        self.inputs = Register(
-            size=_labels_size(self.input_port_labels),
-            mapping=self.input_port_labels and self.input_port_labels.copy()
-            )
-        self.outputs = Register(
-            size=_labels_size(self.output_port_labels),
-            mapping=self.output_port_labels and self.output_port_labels.copy()
-            )
+        self.inputs = Register(mapping=self.input_port_labels)
+        self.outputs = Register(mapping=self.output_port_labels)
 
         #initialize integration engine as 'None' by default
         self.engine = None

@@ -122,11 +122,11 @@ class Graph:
         """
         # {(block, channel_idx): connection}
         connected_targets = set()
-
+        
         for connection in self.connections:
             for target in connection.targets:
                 target_block = target.block
-                for port_idx in target._resolve(target_block.inputs):
+                for port_idx in target_block.inputs._resolve(target.ports):
                     key = (target_block, int(port_idx))
                     if key in connected_targets:
                         raise ValueError(

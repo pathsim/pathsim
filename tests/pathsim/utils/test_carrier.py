@@ -205,25 +205,24 @@ class TestCarrierPorts(unittest.TestCase):
     def test_portreference(self):
         src, snk = self.make_blocks()
 
-        #a carrier port counts with all its channels
+        #a carrier port resolves to all its channels
         PR = src["out"]
-        self.assertEqual(len(PR), 3)
+        self.assertEqual(len(PR), 1)
         np.testing.assert_array_equal(PR._get_output_indices(), [0, 1, 2])
 
         #plain channels are unaffected
-        self.assertEqual(len(snk["Q"]), 1)
+        np.testing.assert_array_equal(snk["Q"]._get_input_indices(), [3])
 
 
     def test_component_access(self):
         src, _ = self.make_blocks()
 
-        #by attribute, by key and by position, kept symbolic
-        self.assertEqual(src["out"].T.ports, [("out", "T")])
+        #by key and by position, kept symbolic
         self.assertEqual(src["out"]["T"].ports, [("out", "T")])
         self.assertEqual(src["out"][2].ports, [("out", 2)])
 
         #resolved in the register of the direction
-        np.testing.assert_array_equal(src["out"].T._get_output_indices(), [1])
+        np.testing.assert_array_equal(src["out"]["T"]._get_output_indices(), [1])
         np.testing.assert_array_equal(src["out"][2]._get_output_indices(), [2])
 
         #only for a single carrier port
@@ -231,10 +230,30 @@ class TestCarrierPorts(unittest.TestCase):
         with self.assertRaises(ValueError): src["out"]["x"]
         with self.assertRaises(ValueError): src["out"][3]
 
-        #missing attributes behave like attributes
-        self.assertFalse(hasattr(src["out"], "x"))
-        self.assertFalse(hasattr(src[0], "T"))
-        with self.assertRaises(AttributeError): src["out"].x
+        #no channel access by attribute, it would be shadowed by the
+        #attributes of the port reference itself
+        with self.assertRaises(AttributeError): src["out"].T
+
+
+    def test_overlap(self):
+
+        #carrier overlaps with a single channel port
+        class A(Block):
+            input_port_labels = {"s": Carrier(keys=("F", "T")), "x": 1}
+
+        with self.assertRaises(ValueError): A()
+
+        #carriers overlap with each other
+        class B(Block):
+            input_port_labels = {"a": Carrier(keys=("F", "T")), "b": Carrier(1, keys=("F", "T"))}
+
+        with self.assertRaises(ValueError): B()
+
+        #single channel ports may alias each other, as before
+        class C(Block):
+            input_port_labels = {"x": 0, "y": 0, "s": Carrier(1, keys=("F", "T"))}
+
+        self.assertEqual(len(C().inputs), 3)
 
 
     def test_direction(self):
@@ -247,15 +266,15 @@ class TestCarrierPorts(unittest.TestCase):
         H = Heater()
 
         #channels resolve per direction
-        np.testing.assert_array_equal(H["stream"].T._get_input_indices(), [1])
-        np.testing.assert_array_equal(H["stream"].T._get_output_indices(), [2])
+        np.testing.assert_array_equal(H["stream"]["T"]._get_input_indices(), [1])
+        np.testing.assert_array_equal(H["stream"]["T"]._get_output_indices(), [2])
 
         #width per direction
-        self.assertEqual(H["stream"]._size(H.inputs), 2)
-        self.assertEqual(H["stream"]._size(H.outputs), 3)
+        self.assertEqual(len(H.inputs._resolve(H["stream"].ports)), 2)
+        self.assertEqual(len(H.outputs._resolve(H["stream"].ports)), 3)
 
         #channel that only exists for the outputs
-        PR = H["stream"].P
+        PR = H["stream"]["P"]
         PR._validate_output_ports()
         with self.assertRaises(ValueError): PR._validate_input_ports()
 
@@ -280,11 +299,19 @@ class TestCarrierPorts(unittest.TestCase):
         np.testing.assert_array_equal(snk.inputs["in"], [1.0, 2.0, 3.0])
 
         #single component
-        C = Connection(src["out"].P, snk["Q"])
+        C = Connection(src["out"]["P"], snk["Q"])
         self.assertEqual(len(C), 1)
 
         C.update()
         self.assertEqual(snk.inputs["Q"], 3.0)
+
+        #multiple targets, carrier and single channels
+        _, snk_2 = self.make_blocks()
+        C = Connection(src["out"], snk["in"], snk_2["in"])
+        src.outputs["out"] = [4.0, 5.0, 6.0]
+        C.update()
+        np.testing.assert_array_equal(snk.inputs["in"], [4.0, 5.0, 6.0])
+        np.testing.assert_array_equal(snk_2.inputs["in"], [4.0, 5.0, 6.0])
 
 
     def test_connection_dimensions(self):
@@ -292,7 +319,7 @@ class TestCarrierPorts(unittest.TestCase):
 
         #carrier width has to match
         with self.assertRaises(ValueError): Connection(src["out"], snk["Q"])
-        with self.assertRaises(ValueError): Connection(src["out"].F, snk["in"])
+        with self.assertRaises(ValueError): Connection(src["out"]["F"], snk["in"])
 
 
     def test_connection_conflict(self):
@@ -302,7 +329,7 @@ class TestCarrierPorts(unittest.TestCase):
         with self.assertRaises(ValueError):
             Simulation(
                 [src, snk],
-                [Connection(src["out"], snk["in"]), Connection(src["out"].F, snk["in"].T)],
+                [Connection(src["out"], snk["in"]), Connection(src["out"]["F"], snk["in"]["T"])],
                 log=False
                 )
 
@@ -349,7 +376,7 @@ class TestCarrierPorts(unittest.TestCase):
         np.testing.assert_array_almost_equal(snk.inputs["in"], [2.0, 4.0, 6.0])
 
         #single channel through the subsystem
-        self.assertEqual(len(Connection(sub["out"].T, snk["in"].T)), 1)
+        self.assertEqual(len(Connection(sub["out"]["T"], snk["in"]["T"])), 1)
 
 
 # RUN TESTS LOCALLY ====================================================================

@@ -95,12 +95,12 @@ def _port_labels(port_refs, keys, inputs=True):
         register = pr.block.inputs if inputs else pr.block.outputs
 
         #single channel -> block identifier only
-        if pr._size(register) == 1:
+        if len(register._resolve(pr.ports)) == 1:
             labels.append(keys[pr.block])
             continue
 
         for p in pr.ports:
-            carrier = None if isinstance(p, tuple) else pr._get_carrier(p, register)
+            carrier = register._carriers.get(p) if isinstance(p, str) else None
             if carrier is None:
                 name = f"{p[0]}.{p[1]}" if isinstance(p, tuple) else p
                 labels.append(f"{keys[pr.block]}[{name}]")
