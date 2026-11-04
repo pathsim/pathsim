@@ -8,11 +8,6 @@
 ##
 #########################################################################################
 
-# IMPORTS ===============================================================================
-
-import numpy as np
-
-
 # CLASSES ===============================================================================
 
 class Carrier:
@@ -24,12 +19,11 @@ class Carrier:
 
     .. code-block:: python
 
+        _in_1 = Carrier(keys=("F", "T"))
+        _in_2 = Carrier(_in_1.stop, keys=("F", "T"))
+
         class Mixer(Block):
-            def __init__(self):
-                super().__init__()
-                _in_1 = Carrier(keys=("F", "T"))
-                _in_2 = Carrier(_in_1.stop, keys=("F", "T"))
-                self.input_port_labels = {"in_1": _in_1, "in_2": _in_2}
+            input_port_labels = {"in_1": _in_1, "in_2": _in_2}
 
 
     The carrier only exists while the system graph is assembled. Component
@@ -78,7 +72,7 @@ class Carrier:
     keys = ()
 
     #names that would collide with the carrier interface itself
-    _reserved = ("keys", "start", "stop", "size")
+    _reserved = ("keys", "start", "stop", "size", "slice")
 
     def __init__(self, start=0, keys=None):
 
@@ -98,6 +92,10 @@ class Carrier:
         #position validation
         if not isinstance(start, int) or start < 0:
             raise ValueError(f"Start '{start}' must be a positive int!")
+
+        #size validation
+        if self.size < 1:
+            raise ValueError("Carrier must have at least one channel!")
 
         self.start = start
         self.stop = start + self.size
@@ -125,11 +123,6 @@ class Carrier:
 
     def __len__(self):
         return self.size
-
-
-    def __iter__(self):
-        """Iteration over the channel indices in the register"""
-        return iter(range(self.start, self.stop))
 
 
     def __getitem__(self, key):
@@ -170,26 +163,6 @@ class Carrier:
             slice covering all channels of the carrier
         """
         return slice(self.start, self.stop)
-
-
-    def to_array(self, values):
-        """Build a flat array for the channels of the carrier from a mapping
-        of keys to values. Keys that are not provided stay zero.
-
-        Parameters
-        ----------
-        values : dict[str: float]
-            values for the channels, by key
-
-        Returns
-        -------
-        arr : np.ndarray
-            values in the channel order of the carrier
-        """
-        _arr = np.zeros(self.size)
-        for key, val in values.items():
-            _arr[self[key] - self.start] = val
-        return _arr
 
 
 class Vector(Carrier):

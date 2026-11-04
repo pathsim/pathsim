@@ -26,12 +26,6 @@ class TestCarrier(unittest.TestCase):
     """
 
     def test_init(self):
-        #default
-        C = Carrier()
-        self.assertEqual(C.keys, ())
-        self.assertEqual(C.start, 0)
-        self.assertEqual(C.stop, 0)
-
         #with keys
         C = Carrier(keys=("F", "T", "P"))
         self.assertEqual(C.keys, ("F", "T", "P"))
@@ -46,7 +40,9 @@ class TestCarrier(unittest.TestCase):
         #input validation
         with self.assertRaises(ValueError): Carrier(keys=("F", "F"))     #duplicates
         with self.assertRaises(ValueError): Carrier(keys=("F", 1))       #no str
+        with self.assertRaises(ValueError): Carrier()                    #no channels
         with self.assertRaises(ValueError): Carrier(keys=("F", "start")) #reserved
+        with self.assertRaises(ValueError): Carrier(keys=("F", "slice")) #reserved
         with self.assertRaises(ValueError): Carrier(keys=("F", "_x"))    #reserved
         with self.assertRaises(ValueError): Carrier(-1, keys=("F",))     #negative start
         with self.assertRaises(ValueError): Carrier(1.5, keys=("F",))    #no int
@@ -85,14 +81,8 @@ class TestCarrier(unittest.TestCase):
 
 
     def test_len(self):
-        self.assertEqual(len(Carrier()), 0)
         self.assertEqual(len(Carrier(keys=("F", "T"))), 2)
         self.assertEqual(len(Carrier(9, keys=("F", "T"))), 2)
-
-
-    def test_iter(self):
-        C = Carrier(2, keys=("F", "T", "P"))
-        self.assertEqual(list(C), [2, 3, 4])
 
 
     def test_getitem(self):
@@ -120,15 +110,6 @@ class TestCarrier(unittest.TestCase):
         #direct access to flat data
         u = np.arange(6, dtype=float)
         np.testing.assert_array_equal(u[C.slice], [2.0, 3.0, 4.0])
-
-
-    def test_to_array(self):
-        C = Carrier(4, keys=("F", "T", "P"))
-
-        np.testing.assert_array_equal(C.to_array({"F": 1.0, "T": 2.0, "P": 3.0}), [1.0, 2.0, 3.0])
-
-        #missing keys stay zero
-        np.testing.assert_array_equal(C.to_array({"T": 2.0}), [0.0, 2.0, 0.0])
 
 
 class TestVector(unittest.TestCase):
@@ -161,10 +142,9 @@ class TestVector(unittest.TestCase):
         with self.assertRaises(ValueError): V["x"] #no keys
 
 
-    def test_len_iter(self):
+    def test_len(self):
         V = Vector(3, start=2)
         self.assertEqual(len(V), 3)
-        self.assertEqual(list(V), [2, 3, 4])
 
 
 class TestCarrierPorts(unittest.TestCase):
