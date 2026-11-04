@@ -199,6 +199,25 @@ class TestRegister(unittest.TestCase):
         self.assertEqual(len(R), 2)
 
 
+
+    def test_mapping(self):
+
+        R = Register(mapping={"a": 0, "b": 2})
+
+        #register is sized to hold all aliases
+        self.assertEqual(len(R), 3)
+
+        #set and get by alias
+        R["b"] = 3.3
+        self.assertEqual(R["b"], 3.3)
+        self.assertEqual(R[2], 3.3)
+
+        #unknown alias returns default float 0.0
+        self.assertEqual(R["c"], 0.0)
+
+        #explicit size larger than the aliases
+        self.assertEqual(len(Register(5, mapping={"a": 0})), 5)
+
 # RUN TESTS LOCALLY ====================================================================
 
 if __name__ == '__main__':

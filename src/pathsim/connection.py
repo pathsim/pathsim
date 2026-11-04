@@ -138,9 +138,12 @@ class Connection:
     ----------
     _active : bool
         flag to set 'Connection' as active or inactive
+    _transfers : list[tuple[Block, int | np.ndarray, int | np.ndarray]] | None
+        resolved data transfers to the targets as tuples of target block,
+        target and source channel indices, built by 'resolve_ports'
     """
 
-    __slots__ = ["source", "targets", "_active"]
+    __slots__ = ["source", "targets", "_active", "_transfers"]
 
 
     def __init__(self, source, *targets):
@@ -153,6 +156,9 @@ class Connection:
 
         #flag to set connection active
         self._active = True
+
+        #resolved data transfers (lazily initialized)
+        self._transfers = None
         
         #validate port aliases
         self._validate_ports()
@@ -169,8 +175,10 @@ class Connection:
 
 
     def __len__(self):
-        """Returns the number of ports that are defined in the connection"""
-        return len(self.source)
+        """Returns the number of channels that are defined in the connection,
+        ports that are carriers count with all of their channels
+        """
+        return len(self.source.block.outputs._resolve(self.source.ports))
 
 
     def __bool__(self):
@@ -199,9 +207,9 @@ class Connection:
         """Check the dimensions of the source and target ports, 
         if they dont match, raises an exception.
         """
-        n_src = len(self.source)
+        n_src = len(self)
         for trg in self.targets:
-            if len(trg) != n_src:
+            if len(trg.block.inputs._resolve(trg.ports)) != n_src:
                 raise ValueError(f"Source and target have different number of ports!")
 
 
@@ -245,8 +253,12 @@ class Connection:
         """Transfers data from the source block output port 
         to the target block input port.
         """
-        for trg in self.targets:
-            self.source.to(trg)
+        if self._transfers is None:
+            self.resolve_ports()
+
+        _data = self.source.block.outputs._data
+        for block, i_trg, i_src in self._transfers:
+            block.inputs._data[i_trg] = _data[i_src]
 
 
     def resolve_ports(self):
@@ -267,10 +279,20 @@ class Connection:
         Calling ``resolve_ports`` once during graph assembly closes that
         gap. Idempotent. New register slots are zero-initialised through
         ``np.zeros`` in ``Register.resize``.
+
+        The resolved indices are stored as data transfers for ``update``,
+        transfers of a single channel use plain integer indices, which is
+        faster than fancy indexing with an index array.
         """
-        self.source._get_output_indices()
+        i_src = self.source._get_output_indices()
+
+        self._transfers = []
         for trg in self.targets:
-            trg._get_input_indices()
+            i_trg = trg._get_input_indices()
+            if len(i_trg) == 1:
+                self._transfers.append((trg.block, int(i_trg[0]), int(i_src[0])))
+            else:
+                self._transfers.append((trg.block, i_trg, i_src))
 
 
 @deprecated(version="1.0.0")

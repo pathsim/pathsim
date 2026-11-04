@@ -16,6 +16,15 @@ class PortReference:
     """Container class that holds a reference to a block and a list of ports.
     Optimized with cached integer indices for ultra-fast transfers.
 
+    Ports that are a `Carrier` cover multiple channels of the block register.
+    Single channels of a carrier are referenced as a tuple of the port name
+    and the channel key, which is what indexing a carrier port creates
+
+    .. code-block:: python
+
+        B["stream"]["T"]  # -> PortReference(B, [("stream", "T")])
+
+
     Note
     ----
     The default port, when no ports are defined in the arguments is `0`.
@@ -24,8 +33,8 @@ class PortReference:
     ----------
     block : Block
         internal block reference
-    ports : list[int, str]
-        list of port indices or names
+    ports : list[int, str, tuple[str, int | str]]
+        list of port indices, port names or single channels of carriers
     """
 
     __slots__ = ["block", "ports", "_input_indices", "_output_indices"]
@@ -41,14 +50,14 @@ class PortReference:
         
         for p in _ports:
             # Type validation for individual ports
-            if not isinstance(p, (int, str)):
+            if not isinstance(p, (int, str, tuple)):
                 raise ValueError(f"Port '{p}' must be (int, str) but is '{type(p)}'!")
 
             # Validation for positive integer
             if isinstance(p, int) and p < 0:
                 raise ValueError(f"Port '{p}' is int but must be positive!")
             
-            # Key existence validation for string ports
+            # Key existence validation for string ports and carrier channels
             if not (p in block.inputs or p in block.outputs):        
                 raise ValueError(f"Port alias '{p}' not defined for Block {block}!")
 
@@ -69,6 +78,25 @@ class PortReference:
         return len(self.ports)
 
 
+    def __getitem__(self, key):
+        """Reference to a single channel of a port that is a `Carrier`,
+        either by channel name or by channel position.
+
+        Parameters
+        ----------
+        key : int, str
+            channel name or channel position within the carrier
+
+        Returns
+        -------
+        PortReference
+            container object that holds the block reference and the channel
+        """
+        if len(self.ports) != 1 or not isinstance(self.ports[0], str):
+            raise ValueError(f"Ports '{self.ports}' of Block {self.block} are no single carrier!")
+        return PortReference(self.block, [(self.ports[0], key)])
+
+
     def _get_input_indices(self):
         """Get cached input indices, resolving string aliases to integers.
         Also expands the input array if needed.
@@ -76,9 +104,7 @@ class PortReference:
         if self._input_indices is None:
 
             # Resolve indices/aliases through mapping   
-            self._input_indices = np.array([
-                self.block.inputs._map(p) for p in self.ports
-                ], dtype=np.intp)
+            self._input_indices = self.block.inputs._resolve(self.ports)
 
             # Resize register to accommodate indices
             max_idx = self._input_indices.max()
@@ -94,9 +120,7 @@ class PortReference:
         if self._output_indices is None:
 
             # Resolve indices/aliases through mapping            
-            self._output_indices = np.array([
-                self.block.outputs._map(p) for p in self.ports
-                ], dtype=np.intp)
+            self._output_indices = self.block.outputs._resolve(self.ports)
 
             # Resize register to accommodate indices
             max_idx = self._output_indices.max()
