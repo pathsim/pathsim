@@ -265,7 +265,6 @@ class TestSpectrum(unittest.TestCase):
         S.update(10.0)
 
 
-    @unittest.skip("NumPy compatibility issue in Python 3.13")
     def test_read_with_state(self):
         """Test read returns spectrum from solver state"""
 
@@ -288,7 +287,6 @@ class TestSpectrum(unittest.TestCase):
         np.testing.assert_array_almost_equal(spec[0], state / S.time)
 
 
-    @unittest.skip("NumPy compatibility issue in Python 3.13")
     def test_read_with_alpha(self):
         """Test read with forgetting factor applies correct scaling"""
 
@@ -323,7 +321,6 @@ class TestSpectrum(unittest.TestCase):
         self.assertIsNone(result)
 
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_plot_with_data(self):
         """Test plot creates figure with data"""
 
@@ -449,7 +446,6 @@ class TestRealtimeSpectrum(unittest.TestCase):
     Test the implementation of the 'RealtimeSpectrum' block class
     """
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_init(self):
         """Test RealtimeSpectrum initialization"""
 
@@ -477,7 +473,6 @@ class TestRealtimeSpectrum(unittest.TestCase):
         self.assertIsNotNone(RS.plotter)
 
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_step_early_time(self):
         """Test step before effective time > dt"""
 
@@ -500,7 +495,6 @@ class TestRealtimeSpectrum(unittest.TestCase):
         self.assertIsNone(scale)  # No rescale needed
 
 
-    @unittest.skip("Matplotlib/numpy compatibility issue in Python 3.13")
     def test_step_after_wait(self):
         """Test step after wait period with solver"""
 
@@ -521,7 +515,7 @@ class TestRealtimeSpectrum(unittest.TestCase):
         success, error, scale = RS.step(1.15, 0.1)
 
         # Should perform integration step
-        self.assertEqual(RS.time, 0.15)  # 1.15 - 1.0
+        self.assertAlmostEqual(RS.time, 0.15)  # 1.15 - 1.0
         self.assertIsInstance(success, bool)
         self.assertIsInstance(error, float)
         self.assertIsInstance(scale, float)
