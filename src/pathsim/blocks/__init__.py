@@ -19,6 +19,7 @@ from .switch import *
 from .dynsys import *
 from .kalman import *
 from .adder import *
+from .splitter import *
 from .scope import *
 from .delay import *
 from .noise import *
