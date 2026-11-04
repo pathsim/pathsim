@@ -786,6 +786,9 @@ class Subsystem(Block):
         if not _blocks_dyn:
             return None
 
+        #the parent may have supplied new inputs after evaluating our outputs
+        self.update(t)
+
         _derivatives = []
         for b in _blocks_dyn:
             _d = b.derivative(t)
@@ -928,6 +931,9 @@ class Subsystem(Block):
         max_error : float
             maximum error of implicit update equaiton
         """
+        #refresh internal inputs for the current implicit stage
+        self.update(t)
+
         max_error = 0.0
         for block in self._blocks_dyn:
             if not block: continue
@@ -962,6 +968,9 @@ class Subsystem(Block):
         scale : float
             rescale factor for timestep
         """
+
+        #refresh internal inputs for the current explicit stage
+        self.update(t)
 
         #initial timestep rescale and error estimate
         success, max_error_norm, min_scale = True, 0.0, None

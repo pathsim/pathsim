@@ -14,6 +14,9 @@ import numpy as np
 
 from pathsim.blocks.delay import Delay
 from pathsim.utils.adaptivebuffer import AdaptiveBuffer
+from pathsim import Simulation, Connection
+from pathsim.blocks import Adder, Amplifier, Scope, Source
+from pathsim.solvers import EUF, RK4, RKBS32, SSPRK22
 
 from tests.pathsim.blocks._embedding import Embedding
 
@@ -194,6 +197,58 @@ class TestDelayDiscrete(unittest.TestCase):
 
         #ring buffer should be unchanged (all zeros)
         self.assertTrue(all(v == 0.0 for v in D._ring))
+
+
+    def test_event_publishes_sample_before_input_is_latched(self):
+
+        for n in [1, 3]:
+            with self.subTest(n=n):
+                D = Delay(tau=n, sampling_period=1)
+
+                for k in range(8):
+                    D.events[0].resolve(k)
+                    D.update(k)
+                    expected = float(k - n + 1) if k >= n else 0.0
+                    self.assertEqual(D.outputs[0], expected)
+
+                    D.inputs[0] = float(k + 1)
+                    D.sample(k, 1)
+
+                    #latching the current input must not advance the output
+                    D.update(k + 0.5)
+                    self.assertEqual(D.outputs[0], expected)
+
+
+    def test_feedback_delay(self):
+
+        ts = 0.001
+        values = np.array([1.0, 0.0, -0.5, 2.0, 0.25, -1.0, 0.5, 0.0])
+
+        for solver in [RKBS32, SSPRK22, RK4, EUF]:
+            for adaptive in [True, False]:
+                for n, gain in [(1, 1.0), (3, 0.5)]:
+                    with self.subTest(solver=solver, adaptive=adaptive, n=n):
+                        src = Source(lambda t: values[min(
+                            int(np.floor(t / ts + 1e-9)), len(values) - 1)])
+                        add = Adder()
+                        delay = Delay(tau=n * ts, sampling_period=ts)
+                        amp = Amplifier(gain)
+                        scope = Scope(sampling_period=ts, t_wait=0.5 * ts)
+
+                        sim = Simulation(
+                            [src, add, delay, amp, scope],
+                            [Connection(src, add[0]), Connection(delay, amp),
+                             Connection(amp, add[1]), Connection(add, delay, scope)],
+                            dt=ts / 4, dt_max=ts / 4, Solver=solver, log=False,
+                            )
+                        sim.run(len(values) * ts, adaptive=adaptive)
+
+                        expected = values.copy()
+                        for k in range(n, len(values)):
+                            expected[k] += gain * expected[k - n]
+
+                        _, data = scope.read()
+                        np.testing.assert_allclose(data[0], expected, atol=1e-12)
 
 
 # RUN TESTS LOCALLY ====================================================================

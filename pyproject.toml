@@ -23,12 +23,12 @@ dependencies = ["numpy>=1.15", "matplotlib>=3.1", "scipy>=1.2"]
 # have moved to their own toolboxes (pathsim-rf, pathsim-fmi) and the extras
 # will be removed in v1.0.0. Install the toolboxes directly instead.
 rf = ["scikit-rf"]
-fmi = ["FMPy"]
-test = ["pytest", "pytest-cov", "pytest-xdist", "FMPy", "scikit-rf"]
+fmi = ["FMPy>=0.3.22"]
+test = ["pytest", "pytest-cov", "pytest-xdist", "FMPy>=0.3.22", "scikit-rf"]
 
 [project.urls]
 Homepage = "https://github.com/pathsim/pathsim"
-documentation = "https://pathsim.readthedocs.io/en/latest/"
+documentation = "https://docs.pathsim.org"
 
 [tool.pytest.ini_options]
 addopts = "-m 'not slow'"

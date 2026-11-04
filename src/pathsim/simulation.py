@@ -1260,29 +1260,30 @@ class Simulation:
         #log message begin of steady state solver
         self.logger.info(f"STEADYSTATE -> STARTING (reset: {reset})")
 
-        #solve for steady state at current time
-        with Timer(verbose=False) as T:
-            success, evals, iters = self._solve(self.time, self.dt)
+        try:
+            #solve for steady state at current time
+            with Timer(verbose=False) as T:
+                success, evals, iters = self._solve(self.time, self.dt)
 
-        #catch non convergence
-        if not success:
-            details = self._solve_tracker.details(lambda b: b.__class__.__name__)
-            _msg = "STEADYSTATE -> FAILED (evals: {}, iters: {}, runtime: {})\n{}".format(
-                evals, iters, T, "\n".join(details))
-            self.logger.error(_msg)
-            raise RuntimeError(_msg)
+            #catch non convergence
+            if not success:
+                details = self._solve_tracker.details(lambda b: b.__class__.__name__)
+                _msg = "STEADYSTATE -> FAILED (evals: {}, iters: {}, runtime: {})\n{}".format(
+                    evals, iters, T, "\n".join(details))
+                self.logger.error(_msg)
+                raise RuntimeError(_msg)
 
-        #sample result
-        self._sample(self.time, self.dt)
+            #sample result
+            self._sample(self.time, self.dt)
 
-        #log message
-        self.logger.info(
-            "STEADYSTATE -> FINISHED (success: {}, evals: {}, iters: {}, runtime: {})".format(
-                success, evals, iters, T)
-            )
-
-        #switch back to original solver
-        self._set_solver(_solver)
+            #log message
+            self.logger.info(
+                "STEADYSTATE -> FINISHED (success: {}, evals: {}, iters: {}, runtime: {})".format(
+                    success, evals, iters, T)
+                )
+        finally:
+            #restore the transient solver even if solving or sampling fails
+            self._set_solver(_solver)
 
 
     # initial timestep estimation -------------------------------------------------
@@ -2024,6 +2025,10 @@ class Simulation:
 
         #main simulation loop
         while self.time < end_time and self._active:
+
+            if not _adaptive and np.isclose(
+                    self.time - start_time, duration, rtol=1e-12, atol=0.0):
+                break
 
             #advance the simulation by one (effective) timestep '_dt'
             try:

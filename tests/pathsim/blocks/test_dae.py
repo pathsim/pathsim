@@ -13,6 +13,9 @@ import numpy as np
 from pathsim.blocks.dae import SemiExplicitDAE, MassMatrixDAE, FullyImplicitDAE
 
 from pathsim.solvers.esdirk43 import ESDIRK43
+from pathsim.optim.anderson import solve_root
+
+from pathsim._constants import SOL_TOLERANCE_FPI
 
 
 # TESTS ================================================================================
@@ -93,6 +96,40 @@ class TestSemiExplicitDAE(unittest.TestCase):
             )
 
 
+    def _make_block_with_jacs(self):
+        f_dyn = lambda x, z, u, t: -x + z
+        f_alg = lambda x, z, u, t: z - x**2
+        return SemiExplicitDAE(
+            f_dyn, f_alg, initial_value=0.5, z0=0.25,
+            jac_z=lambda x, z, u, t: np.array([[1.0]]),
+            jac_dyn_x=lambda x, z, u, t: np.array([[-1.0]]),
+            jac_dyn_z=lambda x, z, u, t: np.array([[1.0]]),
+            jac_alg_x=lambda x, z, u, t: np.array([[-2.0*x[0]]])
+            )
+
+
+    def test_reduced_jac_analytic_matches_numerical(self):
+        #x' = x**2 - x  ->  reduced J = 2x - 1
+        dae_num = self._make_block()
+        dae_ana = self._make_block_with_jacs()
+
+        x, u = np.array([0.3]), np.array([0.0])
+        J_ana = dae_ana.op_dyn.jac_x(x, u, 0.0)
+        J_num = dae_num.op_dyn.jac_x(x, u, 0.0)
+        np.testing.assert_allclose(J_ana, [[2*0.3 - 1]], atol=1e-12)
+        np.testing.assert_allclose(J_num, [[2*0.3 - 1]], atol=1e-6)
+
+
+    def test_reduced_jac_requires_all_jacobians(self):
+        #partial jacobians alone keep the finite difference fallback
+        dae = SemiExplicitDAE(
+            lambda x, z, u, t: -x + z, lambda x, z, u, t: z - x**2, 0.5, 0.25,
+            jac_dyn_x=lambda x, z, u, t: np.array([[-1.0]])
+            )
+        self.assertIsNone(dae.op_dyn._jac_x)
+        self.assertIsNotNone(self._make_block_with_jacs().op_dyn._jac_x)
+
+
     def test_reset(self):
         dae = self._make_block()
         dae.set_solver(ESDIRK43, None)
@@ -104,8 +141,89 @@ class TestSemiExplicitDAE(unittest.TestCase):
     def test_info(self):
         info = SemiExplicitDAE.info()
         self.assertEqual(info["type"], "SemiExplicitDAE")
-        for p in ("func_dyn", "func_alg", "initial_value", "z0", "jac_z"):
+        for p in ("func_dyn", "func_alg", "initial_value", "z0", "jac_z",
+                  "jac_dyn_x", "jac_dyn_z", "jac_alg_x", "tolerance", "func_out"):
             self.assertIn(p, info["parameters"])
+
+
+    def test_func_out(self):
+        #output function replaces the stacked state [x, z] at the output
+        dae = SemiExplicitDAE(
+            lambda x, z, u, t: -x + z, lambda x, z, u, t: z - x**2, 0.5, 0.25,
+            func_out=lambda x, z, u, t: np.array([x[0] + z[0]])
+            )
+        self.assertEqual(len(dae.outputs), 1)
+
+        dae.set_solver(ESDIRK43, None)
+        dae.update(0.0)
+        self.assertAlmostEqual(float(dae.outputs[0]), 0.5 + 0.25, places=8)
+
+        #reset keeps the output size of the output function
+        dae.reset()
+        self.assertEqual(len(dae.outputs), 1)
+
+
+    def test_no_algebraic_states(self):
+        #empty z reduces the block to a plain ODE without a constraint solve
+        calls = []
+        def f_alg(x, z, u, t):
+            calls.append(1)
+            return np.zeros(0)
+
+        dae = SemiExplicitDAE(
+            lambda x, z, u, t: -x, f_alg, initial_value=[1.0, 2.0], z0=np.zeros(0),
+            jac_z=lambda x, z, u, t: np.zeros((0, 0)),
+            jac_dyn_x=lambda x, z, u, t: -np.eye(2),
+            jac_dyn_z=lambda x, z, u, t: np.zeros((2, 0)),
+            jac_alg_x=lambda x, z, u, t: np.zeros((0, 2))
+            )
+
+        x, u = np.array([1.0, 2.0]), np.array([0.0])
+        self.assertEqual(dae._solve_z(x, u, 0.0).size, 0)
+        np.testing.assert_array_equal(dae.op_dyn.jac_x(x, u, 0.0), -np.eye(2))
+        self.assertEqual(len(calls), 0)
+
+
+    def test_simulation_no_algebraic_states(self):
+        #x' = -x with empty z integrates like the ODE block
+        from pathsim import Simulation
+
+        dae = SemiExplicitDAE(
+            lambda x, z, u, t: -x, lambda x, z, u, t: np.zeros(0),
+            initial_value=[1.0, 2.0], z0=np.zeros(0)
+            )
+        sim = Simulation(blocks=[dae], dt=0.01, Solver=ESDIRK43, log=False)
+        sim.run(1.0)
+
+        np.testing.assert_allclose(dae.engine.state, np.exp(-1.0)*np.array([1.0, 2.0]), rtol=1e-4)
+
+
+    def test_tolerance_default(self):
+        self.assertEqual(self._make_block().tolerance, SOL_TOLERANCE_FPI)
+
+
+    def test_tolerance_residual_floor(self):
+        #roundoff-like noise floor of ~1e-6 on the constraint residual: the
+        #default tolerance is unreachable and the solve exhausts its iterations,
+        #a tolerance above the floor converges in a few iterations
+        calls = []
+        def f_alg(x, z, u, t):
+            calls.append(1)
+            return z - x + 1e-6*np.sin(1e8*z)
+
+        x, u = np.array([0.3]), np.array([0.0])
+        n_calls = []
+        for tol in (SOL_TOLERANCE_FPI, 1e-5):
+            dae = SemiExplicitDAE(
+                lambda x, z, u, t: -x + z, f_alg, 0.5, 0.0,
+                jac_z=lambda x, z, u, t: np.array([[1.0]]), tolerance=tol
+                )
+            calls.clear()
+            z = dae._solve_z(x, u, 0.0)
+            n_calls.append(len(calls))
+
+        self.assertAlmostEqual(float(z[0]), 0.3, places=5)
+        self.assertLess(n_calls[1], n_calls[0] / 10)
 
 
     def test_simulation_matches_analytic(self):
@@ -115,6 +233,28 @@ class TestSemiExplicitDAE(unittest.TestCase):
         from pathsim.blocks import Scope
 
         dae = self._make_block()
+        sco = Scope()
+
+        sim = Simulation(
+            blocks=[dae, sco],
+            connections=[Connection(dae[0], sco[0])],
+            dt=0.01,
+            Solver=ESDIRK43,
+            log=False
+            )
+        sim.run(2.0)
+
+        x_exact, z_exact = self._exact(2.0)
+        self.assertAlmostEqual(float(dae.engine.state[0]), x_exact, places=4)
+        self.assertAlmostEqual(float(dae._z[0]), z_exact, places=4)
+
+
+    def test_simulation_with_analytic_jacobians(self):
+        #same reference problem, integrated with the analytic reduced jacobian
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Scope
+
+        dae = self._make_block_with_jacs()
         sco = Scope()
 
         sim = Simulation(
@@ -185,9 +325,6 @@ class TestMassMatrixDAE(unittest.TestCase):
             MassMatrixDAE(func, np.ones((2, 3)), initial_value=[0.0, 0.0])
         with self.assertRaises(ValueError):
             MassMatrixDAE(func, np.eye(2), initial_value=[0.0])
-        M_bad = np.array([[1.0, 1.0], [0.0, 0.0]])
-        with self.assertRaises(ValueError):
-            MassMatrixDAE(func, M_bad, initial_value=[0.0, 0.0])
 
     def test_passthrough(self):
         dae_ns = MassMatrixDAE(lambda x, u, t: -x, np.eye(2), [1.0, 1.0])
@@ -206,11 +343,27 @@ class TestMassMatrixDAE(unittest.TestCase):
         dae.reset()
         np.testing.assert_array_equal(dae._xa, dae._x0[dae._a])
 
+
     def test_info(self):
         info = MassMatrixDAE.info()
         self.assertEqual(info["type"], "MassMatrixDAE")
-        for p in ("func", "mass", "initial_value", "jac"):
+        for p in ("func", "mass", "initial_value", "jac", "tolerance"):
             self.assertIn(p, info["parameters"])
+
+    def test_tolerance(self):
+        #a loose tolerance is met by the algebraic solve and ends it early
+        M = np.array([[1.0, 0.0], [0.0, 0.0]])
+        func = lambda x, u, t: np.array([-x[0] + x[1], x[1]**3 - x[0]])
+        dae_def = MassMatrixDAE(func, M, [1.0, 2.0])
+        dae_tol = MassMatrixDAE(func, M, [1.0, 2.0], tolerance=1e-2)
+        self.assertEqual(dae_def.tolerance, SOL_TOLERANCE_FPI)
+
+        x_d, u = np.array([1.0]), np.array([0.0])
+        xa_def = dae_def._solve_xa(x_d, u, 0.0)
+        xa_tol = dae_tol._solve_xa(x_d, u, 0.0)
+        self.assertLess(abs(float(xa_def[0])**3 - 1.0), 1e-9)
+        self.assertLess(abs(float(xa_tol[0])**3 - 1.0), 1e-2)
+        self.assertGreater(abs(float(xa_tol[0])**3 - 1.0), 1e-9)
 
     def test_simulation_nonsingular(self):
         #2 x0' = -x0,  x1' = -x1  ->  x0 = exp(-t/2),  x1 = exp(-t)
@@ -246,6 +399,21 @@ class TestMassMatrixDAE(unittest.TestCase):
         sim.run(1.0)
         self.assertAlmostEqual(float(dae.engine.state[0]), np.exp(-0.5), places=4)
 
+    def test_nonsymmetric_singular(self):
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Constant, Scope
+        M = np.array([[1.0, 1.0], [0.0, 0.0]])
+        func = lambda x, u, t: np.array([1., x[0] - x[1]])
+        dae = MassMatrixDAE(func, M, initial_value=[0.0, 0.0])
+        sco = Scope()
+        sim = Simulation(
+            blocks=[dae, sco],
+            connections=[Connection(dae[0], sco[0])],
+            dt=0.01, Solver=ESDIRK43, log=False
+            )
+        sim.run(1.0)
+        np.testing.assert_allclose(dae.outputs.to_array(), [0.5, 0.5], atol=1e-3)
+
     def test_simulation_singular_with_input(self):
         #x0' = -x0 + x1,  0 = x0 + x1 - u   =>   steady state x -> u/2
         from pathsim import Simulation, Connection
@@ -262,6 +430,30 @@ class TestMassMatrixDAE(unittest.TestCase):
             )
         sim.run(20.0)
         np.testing.assert_allclose(dae.outputs.to_array(), [1.0, 1.0], atol=1e-3)
+        
+    def test_algebraic_equations_are_not_state_indices(self):
+        """Use equation rows, not state columns, to solve constraints."""
+        #x1' = 3*x0 - x1 + u; 0 = x0 - 2*x1. Equation/state indices differ.
+        def func(x, u, t):
+            return np.array([3 * x[0] - x[1] + u[0], x[0] - 2 * x[1]])
+
+        def jac(x, u, t):
+            return np.array([[3.0, -1.0], [1.0, -2.0]])
+
+        for jacobian in (None, jac):
+            with self.subTest(analytical_jacobian=jacobian is not None):
+                block = MassMatrixDAE(func=func, mass=[[0.0, 1.0], [0.0, 0.0]], initial_value=[0.0, 0.0], jac=jacobian)
+                inputs = np.array([1.0])
+                for x1 in (0.0, 0.25):
+                    differential = np.array([x1])
+                    with unittest.mock.patch("pathsim.blocks.dae.solve_root", wraps=solve_root) as solve:
+                        algebraic = block._solve_xa(differential, inputs, 0.0)
+                    if jacobian is not None:
+                        constraint_jacobian = solve.call_args.args[3]
+                        np.testing.assert_allclose(constraint_jacobian(algebraic), [[1.0]], atol=1e-12)
+                    np.testing.assert_allclose(algebraic, [2 * x1], atol=1e-12)
+                    np.testing.assert_allclose(block._rhs(differential, inputs, 0.0), [5 * x1 + 1], atol=1e-12)
+
 
 
 class TestFullyImplicitDAE(unittest.TestCase):
@@ -311,8 +503,22 @@ class TestFullyImplicitDAE(unittest.TestCase):
     def test_info(self):
         info = FullyImplicitDAE.info()
         self.assertEqual(info["type"], "FullyImplicitDAE")
-        for p in ("func", "initial_value", "jac_x", "jac_xdot"):
+        for p in ("func", "initial_value", "jac_x", "jac_xdot", "tolerance"):
             self.assertIn(p, info["parameters"])
+
+    def test_tolerance(self):
+        #a loose tolerance is met by the derivative solve and ends it early
+        func = lambda x, xdot, u, t: xdot**3 + xdot + x
+        dae_def = FullyImplicitDAE(func, initial_value=-1.0)
+        dae_tol = FullyImplicitDAE(func, initial_value=-1.0, tolerance=1e-2)
+        self.assertEqual(dae_def.tolerance, SOL_TOLERANCE_FPI)
+
+        x, u = np.array([-1.0]), np.array([0.0])
+        res_def = abs(float(func(x, dae_def._solve_xdot(x, u, 0.0), u, 0.0)[0]))
+        res_tol = abs(float(func(x, dae_tol._solve_xdot(x, u, 0.0), u, 0.0)[0]))
+        self.assertLess(res_def, 1e-9)
+        self.assertLess(res_tol, 1e-2)
+        self.assertGreater(res_tol, 1e-9)
 
     def test_simulation_autonomous(self):
         #F = xdot + x = 0  ->  x' = -x  ->  x = exp(-t)

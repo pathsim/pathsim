@@ -118,6 +118,9 @@ class Delay(Block):
 
             #internal scheduled event for periodic sampling
             def _sample(t):
+                #publish the delayed sample before evaluating the new input
+                if len(self._ring) > self._n:
+                    self._ring.popleft()
                 self._sample_next_timestep = True
 
             self.events = [
@@ -157,7 +160,12 @@ class Delay(Block):
             npz_data.update(self._buffer.to_checkpoint(f"{prefix}/buffer"))
         else:
             #discrete mode: ring buffer
-            npz_data[f"{prefix}/ring"] = np.array(list(self._ring))
+            samples = list(self._ring)
+            if len(self.inputs) > 1:
+                #pad the initial scalar zeros and any narrower channel history
+                samples = [np.pad(np.atleast_1d(u), (0, len(self.inputs) - np.size(u)))
+                           for u in samples]
+            npz_data[f"{prefix}/ring"] = np.array(samples)
             json_data["_sample_next_timestep"] = self._sample_next_timestep
 
         return json_data, npz_data
@@ -195,7 +203,7 @@ class Delay(Block):
             self.outputs.update_from_array(y)
         else:
             #discrete mode: output the oldest value in the ring buffer
-            self.outputs[0] = self._ring[0]
+            self.outputs.update_from_array(self._ring[0])
 
 
     def sample(self, t, dt):
@@ -216,5 +224,6 @@ class Delay(Block):
         else:
             #discrete mode: only sample on scheduled events
             if self._sample_next_timestep:
-                self._ring.append(self.inputs[0])
+                u = self.inputs[0] if len(self.inputs) == 1 else self.inputs.to_array()
+                self._ring.append(u)
                 self._sample_next_timestep = False

@@ -12,9 +12,13 @@ import warnings
 
 from collections import deque
 
+import scipy.sparse as sp
+
 from scipy.linalg import lu_factor, lu_solve, LinAlgWarning
+from scipy.sparse.linalg import splu
 
 from .numerical import num_jac
+from .jacobian import NewtonOperator
 
 from .._constants import (
     TOLERANCE,
@@ -68,6 +72,39 @@ def _factorize(A):
 
     return _lu, _piv
 
+
+def _factorize_sparse(A):
+    """Sparse LU factorization of the Newton matrix, or 'None' if it is singular.
+
+    Sparse counterpart of '_factorize', with the same singularity criterion
+    (a vanishing pivot on the diagonal of 'U' relative to the matrix scale).
+
+    Parameters
+    ----------
+    A : scipy.sparse.csc_matrix
+        Newton matrix
+
+    Returns
+    -------
+    lu : scipy.sparse.linalg.SuperLU, None
+        factorization with a 'solve' method, or 'None' if 'A' is singular
+    """
+    n = A.shape[0]
+    if n == 0 or A.nnz == 0:
+        return None
+
+    try:
+        _lu = splu(A)
+    except RuntimeError:
+        #SuperLU raises on an exactly singular matrix
+        return None
+
+    _scale = np.max(np.abs(A.data))
+    _piv = np.abs(_lu.U.diagonal())
+    if not np.all(np.isfinite(_piv)) or np.min(_piv) <= np.finfo(float).eps * _scale * n:
+        return None
+
+    return _lu
 
 
 def _singular_step(A, res):
@@ -325,6 +362,12 @@ class NewtonAnderson(Anderson):
     number of fixed-point iterations per timestep.  Without a Jacobian the
     solver falls back to pure Anderson acceleration.
 
+    The Jacobian can be a dense array, a ``scipy.sparse`` matrix (the Newton
+    matrix then stays sparse and is factorized with a cached sparse LU) or a
+    :class:`.NewtonOperator`, a matrix-free Jacobian that solves its own Newton
+    system, which is meant for blocks whose Jacobian is dense but cheap to
+    apply, such as the Schur complement of a large sparse system.
+
     References
     ----------
     .. [1] Anderson, D. G. (1965). "Iterative Procedures for Nonlinear
@@ -417,10 +460,18 @@ class NewtonAnderson(Anderson):
         _x = np.asarray(x).flatten()
         _g = np.asarray(g).flatten()
 
-        _jac = np.asarray(jac)
-
         #compute residual
         _res = _g - _x
+
+        #matrix-free jacobian that solves its own newton system
+        if isinstance(jac, NewtonOperator):
+            return _x - jac.newton_solve(_res), np.linalg.norm(_res)
+
+        #sparse jacobian, sparse newton matrix with cached sparse factorization
+        if sp.issparse(jac):
+            return self._newton_sparse(_x, _res, jac)
+
+        _jac = np.asarray(jac)
 
         #early exit for scalar or purely vectorial values
         if _res.size == 1 or np.ndim(_jac) == 1:
@@ -452,7 +503,7 @@ class NewtonAnderson(Anderson):
 
         #reuse the cached factorization while the Newton matrix is unchanged
         #(constant jacobian across iterations / stages), refactor otherwise
-        if self._A is None or _A.shape != self._A.shape \
+        if self._A is None or sp.issparse(self._A) or _A.shape != self._A.shape \
             or not np.array_equal(_A, self._A):
             self._A, self._lu = _A.copy(), _factorize(_A)
 
@@ -462,6 +513,41 @@ class NewtonAnderson(Anderson):
             return _x - _singular_step(_A, _res), np.linalg.norm(_res)
 
         return _x - lu_solve(self._lu, _res), np.linalg.norm(_res)
+
+
+    def _newton_sparse(self, _x, _res, jac):
+        """Newton step with a sparse jacobian. The Newton matrix 'jac - I'
+        stays sparse and is factorized with a sparse LU, which is cached
+        while the matrix is unchanged, like in the dense case.
+
+        Parameters
+        ----------
+        _x : np.ndarray
+            current solution (flat)
+        _res : np.ndarray
+            fixed-point residual 'g - x' (flat)
+        jac : scipy.sparse matrix
+            evaluation of jacobian of 'g'
+
+        Returns
+        -------
+        x : np.ndarray
+            new solution
+        res : float
+            residual norm
+        """
+        _A = sp.csc_matrix(jac) - sp.identity(len(_res), format="csc")
+
+        #reuse the cached factorization while the Newton matrix is unchanged
+        if self._A is None or not sp.issparse(self._A) or _A.shape != self._A.shape \
+            or (self._A != _A).nnz:
+            self._A, self._lu = _A.copy(), _factorize_sparse(_A)
+
+        #singular Newton matrix -> dense pseudo-inverse fallback (small systems only)
+        if self._lu is None:
+            return _x - _singular_step(_A.toarray(), _res), np.linalg.norm(_res)
+
+        return _x - self._lu.solve(_res), np.linalg.norm(_res)
 
 
     def step(self, x, g, jac=None):
