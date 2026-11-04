@@ -12,6 +12,8 @@
 import unittest
 import numpy as np
 
+from pathlib import Path
+
 from pathsim.blocks._block import Block
 from pathsim.blocks.amplifier import Amplifier
 from pathsim.utils.register import Register
@@ -198,7 +200,7 @@ class TestBlock(unittest.TestCase):
         info = Block.info()
 
         #check all expected keys are present
-        expected_keys = {"type", "description", "input_port_labels", "output_port_labels", "parameters"}
+        expected_keys = {"type", "description", "input_port_labels", "output_port_labels", "parameters", "icon"}
         self.assertEqual(set(info.keys()), expected_keys)
 
         #check type is correct
@@ -213,6 +215,9 @@ class TestBlock(unittest.TestCase):
 
         #check parameters (base Block has no parameters)
         self.assertEqual(info["parameters"], {})
+
+        #base Block has no icon
+        self.assertIsNone(info["icon"])
 
 
     def test_info_with_parameters(self):
@@ -280,6 +285,78 @@ class TestBlock(unittest.TestCase):
         self.assertEqual(len(Block().inputs), 1)
         self.assertEqual(len(Block().outputs), 1)
 
+
+
+class TestBlockIcon(unittest.TestCase):
+    """
+    Test the icons of blocks
+    """
+
+    def test_core_block(self):
+
+        icon = Amplifier.icon()
+        self.assertTrue(icon.startswith("<svg"))
+        self.assertIs(Amplifier.info()["icon"], icon)
+
+
+    def test_subclass_has_no_icon(self):
+
+        class MyAmplifier(Amplifier):
+            pass
+
+        self.assertIsNone(MyAmplifier.icon())
+
+
+    def test_package_icons(self):
+        """a package ships icons for its blocks in its own 'icons' directory"""
+
+        import sys
+        import tempfile
+        import importlib
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "icontoolbox"
+            (pkg / "icons").mkdir(parents=True)
+            (pkg / "__init__.py").write_text(
+                "from pathsim.blocks import Block\n"
+                "class Widget(Block): pass\n"
+                "class Gadget(Block): pass\n"
+                )
+            (pkg / "icons" / "Widget.svg").write_text('<svg viewBox="0 0 96 64"/>')
+
+            sys.path.insert(0, tmp)
+            try:
+                mod = importlib.import_module("icontoolbox")
+                self.assertEqual(mod.Widget.icon(), '<svg viewBox="0 0 96 64"/>')
+                self.assertIsNone(mod.Gadget.icon())
+            finally:
+                sys.path.remove(tmp)
+                sys.modules.pop("icontoolbox", None)
+
+
+    def test_shipped_icons(self):
+        """every shipped icon is valid SVG in the shared geometry and belongs to a block"""
+
+        import xml.etree.ElementTree as ET
+        import pathsim
+        import pathsim.blocks
+
+        blocks = {
+            name: obj for name, obj in vars(pathsim.blocks).items()
+            if isinstance(obj, type) and issubclass(obj, Block)
+            }
+        blocks.update(Subsystem=pathsim.Subsystem, Interface=pathsim.Interface)
+
+        icons = sorted((Path(pathsim.__file__).parent / "icons").glob("*.svg"))
+        self.assertGreater(len(icons), 0)
+
+        for path in icons:
+            with self.subTest(icon=path.stem):
+                root = ET.fromstring(path.read_text(encoding="utf-8"))
+                self.assertEqual(root.get("viewBox"), "0 0 96 64")
+                self.assertFalse([e for e in root.iter() if e.tag.endswith("script")])
+                self.assertIn(path.stem, blocks)
+                self.assertIsNotNone(blocks[path.stem].icon())
 
 # RUN TESTS LOCALLY ====================================================================
 

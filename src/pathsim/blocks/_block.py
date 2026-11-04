@@ -10,9 +10,11 @@
 
 # IMPORTS ===============================================================================
 
+import sys
 import inspect
 import numpy as np
 
+from pathlib import Path
 from functools import lru_cache
 
 from ..utils.deprecation import deprecated
@@ -250,6 +252,8 @@ class Block:
                 Output port name to index mapping
             - parameters : dict
                 Parameter names mapped to their default values
+            - icon : str | None
+                SVG icon of the block, see 'icon'
         """
 
         # Get __init__ signature for parameters
@@ -268,7 +272,37 @@ class Block:
             "input_port_labels": cls.input_port_labels,
             "output_port_labels": cls.output_port_labels,
             "parameters": params,
+            "icon": cls.icon(),
             }
+
+
+    @classmethod
+    @lru_cache()
+    def icon(cls):
+        """SVG icon of the block for graphical editors such as PathView.
+
+        The icon is read from 'icons/<ClassName>.svg' in the top level package
+        that defines the block, so toolboxes ship icons for their blocks by
+        placing them in their own 'icons' directory. Subclasses dont inherit
+        the icon of their parent class.
+
+        Icons use a '0 0 96 64' viewBox and draw with 'currentColor', so the
+        editor sets their color.
+
+        Returns
+        -------
+        icon : str | None
+            SVG markup of the icon, 'None' if the package has no icon for
+            the block
+        """
+        package = sys.modules.get(cls.__module__.split(".")[0])
+        path = getattr(package, "__file__", None)
+        if path is None:
+            return None
+        icon_file = Path(path).parent / "icons" / f"{cls.__name__}.svg"
+        if not icon_file.is_file():
+            return None
+        return icon_file.read_text(encoding="utf-8")
 
 
     # methods for visualization ---------------------------------------------------------
