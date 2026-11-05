@@ -99,6 +99,19 @@ class TestAnderson(unittest.TestCase):
         self.assertEqual(len(aa.dr_buffer), 0)
 
 
+    def test_vector_affine_fixed_point(self):
+        #the residual must be able to leave the span of the first step
+        A = np.array([[0.5, 0.2], [-0.1, 0.3]])
+        b = np.array([1.0, 2.0])
+        aa = Anderson(m=4)
+        x, res, _ = aa.solve(
+            lambda x: A @ x + b - x,
+            np.zeros(2), iterations_max=20, tolerance=1e-12
+            )
+        np.testing.assert_allclose(x, np.linalg.solve(np.eye(2) - A, b), atol=1e-12)
+        self.assertLess(res, 1e-12)
+
+
 class TestNewtonAnderson(unittest.TestCase):
     """
     Extended tests for the 'NewtonAnderson' class.
