@@ -261,16 +261,22 @@ class Anderson:
         self.r_prev = None
 
 
-    def step(self, x, g):
+    def step(self, x, g, beta=1.0):
         """Perform one iteration on the fixed-point solution.
-    
+
+        The update mixes the iterates and, weighted with 'beta', the residual
+        directions outside the history (Walker--Ni). With 'beta=1' this is the
+        type II update on the function values, 'beta=0' only mixes the iterates.
+
         Parameters
         ----------
         x : float, array
             current solution
         g : float, array
             current evaluation of g(x)
-        
+        beta : float
+            mixing of the residual into the update
+
         Returns
         -------
         x : float, array
@@ -336,8 +342,8 @@ class Anderson:
         #compute coefficients from least squares problem
         C, *_ = np.linalg.lstsq(dR.T, _res, rcond=None)
 
-        #mix function values, retaining residual directions outside the history
-        return _g - C @ (dX + dR), np.linalg.norm(_res)
+        #mix the iterates and the residual directions outside the history
+        return _x - C @ dX + beta * (_res - C @ dR), np.linalg.norm(_res)
 
 
 
@@ -582,8 +588,9 @@ class NewtonAnderson(Anderson):
             #newton step with residual
             _x, res_norm = self._newton(x, g, jac)
 
-            #anderson step with no residual
-            y, _ = super().step(_x, g)
+            #anderson step on the newton iterate, 'g' belongs to the previous
+            #iterate, so only the iterates are mixed
+            y, _ = super().step(_x, g, beta=0.0)
 
             return y, res_norm
 

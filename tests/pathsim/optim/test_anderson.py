@@ -157,6 +157,18 @@ class TestNewtonAnderson(unittest.TestCase):
         self.assertEqual(result.shape, (2,))
         self.assertTrue(residual >= 0)
 
+    def test_step_keeps_exact_newton_iterate(self):
+        #affine map with exact jacobian: the newton step hits the fixed point,
+        #the anderson step must not pull it back towards the previous 'g'
+        A = np.array([[0.2, 0.5, 0.0], [-0.3, 0.1, 0.4], [0.0, 0.6, -0.2]])
+        b = np.array([1.0, -2.0, 0.5])
+        x_star = np.linalg.solve(np.eye(3) - A, b)
+        naa = NewtonAnderson()
+        x = np.zeros(3)
+        for _ in range(3):
+            x, _ = naa.step(x, A @ x + b, A)
+        np.testing.assert_allclose(x, x_star, atol=1e-12)
+
     def test_solve_scalar_equation(self):
         # Solve x = cos(x)
         naa = NewtonAnderson(m=5)
