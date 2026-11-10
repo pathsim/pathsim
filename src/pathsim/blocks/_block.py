@@ -575,7 +575,7 @@ class Block:
     # methods for sampling data ---------------------------------------------------------
     
     @property
-    def samples_outputs(self):
+    def _samples_outputs(self):
         """Whether 'sample' can change the outputs or the state of the block,
         so that the system has to be evaluated again after sampling. True for
         every block that implements 'sample', blocks that only record their

@@ -303,7 +303,7 @@ class Spectrum(Block):
 
 
     @property
-    def samples_outputs(self):
+    def _samples_outputs(self):
         """Recording only, sampling leaves the outputs unchanged"""
         return False
 
