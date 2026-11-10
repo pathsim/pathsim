@@ -12,17 +12,12 @@
 import unittest
 import numpy as np
 
-from pathsim import Simulation, Connection, Carrier, Vector
+from pathsim import Simulation, Connection
 from pathsim.blocks import Constant, Integrator
-from pathsim.blocks._block import Block
 from pathsim.blocks.splitter import Splitter
 
 
 # TESTS ================================================================================
-
-class Species(Carrier):
-    keys = ("H", "D", "T")
-
 
 class TestSplitter(unittest.TestCase):
     """
@@ -64,74 +59,36 @@ class TestSplitter(unittest.TestCase):
         self.assertAlmostEqual(S.outputs["out_1"], 0.6)
 
 
-    def test_carrier(self):
-
-        S = Splitter([0.9, 0.1], carrier=Species())
-
-        #ports with the layout of the carrier
-        self.assertEqual(len(S.inputs), 3)
-        self.assertEqual(len(S.outputs), 6)
-        self.assertEqual(S.output_port_labels["out_1"].start, 3)
-        self.assertEqual(S.output_port_labels["out_1"].keys, ("H", "D", "T"))
-
-        S.inputs["in"] = [1.0, 2.0, 3.0]
-        S.update(0)
-
-        np.testing.assert_array_almost_equal(S.outputs["out_0"], [0.9, 1.8, 2.7])
-        np.testing.assert_array_almost_equal(S.outputs["out_1"], [0.1, 0.2, 0.3])
-
-        #single channel of an output
-        self.assertAlmostEqual(S.outputs[S.output_port_labels["out_1"]["T"]], 0.3)
-
-
-    def test_vector(self):
-
-        S = Splitter([0.5, 0.5], carrier=Vector(2))
-
-        S.inputs["in"] = [2.0, 4.0]
-        S.update(0)
-
-        np.testing.assert_array_almost_equal(S.outputs.to_array(), [1.0, 2.0, 1.0, 2.0])
-
-
     def test_simulation(self):
-        """species are conserved over the split"""
+        """the flow is conserved over the split"""
 
-        class Source(Block):
-            output_port_labels = {"out": Species()}
-
-            def update(self, t):
-                self.outputs["out"] = [1.0, 2.0, 3.0]
-
-        src = Source()
-        spl = Splitter([0.7, 0.3], carrier=Species())
-        itg_0, itg_1 = Integrator([0.0]*3), Integrator([0.0]*3)
+        src = Constant(2.0)
+        spl = Splitter([0.7, 0.3])
+        itg_0, itg_1 = Integrator(), Integrator()
 
         sim = Simulation(
             [src, spl, itg_0, itg_1],
             [
-                Connection(src["out"], spl["in"]),
-                Connection(spl["out_0"], itg_0[0:3]),
-                Connection(spl["out_1"], itg_1[0:3]),
+                Connection(src, spl["in"]),
+                Connection(spl["out_0"], itg_0),
+                Connection(spl["out_1"], itg_1),
                 ],
             dt=0.1,
             log=False
             )
         sim.run(1.0)
 
-        np.testing.assert_array_almost_equal(itg_0.state + itg_1.state, [1.0, 2.0, 3.0])
-        np.testing.assert_array_almost_equal(itg_1.state, [0.3, 0.6, 0.9])
+        self.assertAlmostEqual(float(itg_0.state[0] + itg_1.state[0]), 2.0)
+        self.assertAlmostEqual(float(itg_1.state[0]), 0.6)
 
 
     def test_linearization(self):
 
-        S = Splitter([0.25, 0.75], carrier=Species())
+        S = Splitter([0.25, 0.75])
 
         A, B, C, D = S.to_statespace(0)
 
-        np.testing.assert_array_almost_equal(
-            D, np.vstack([0.25*np.eye(3), 0.75*np.eye(3)])
-            )
+        np.testing.assert_array_almost_equal(D, [[0.25], [0.75]])
 
 
     def test_mutable(self):
