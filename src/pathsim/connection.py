@@ -169,9 +169,8 @@ class Connection:
 
     def __str__(self):
         """String representation of the connection"""
-        src = f"{self.source.block}[{self.source.ports}]"
-        trgs = ", ".join(f"{t.block}[{t.ports}]" for t in self.targets)
-        return f"Connection({src} -> {trgs})"
+        trgs = ", ".join(str(t) for t in self.targets)
+        return f"Connection({self.source} -> {trgs})"
 
 
     def __len__(self):
@@ -204,13 +203,28 @@ class Connection:
 
 
     def _validate_dimensions(self):
-        """Check the dimensions of the source and target ports, 
-        if they dont match, raises an exception.
+        """Check the dimensions of the source and target ports, and that
+        named channels meet channels of the same name. A carrier connects to
+        a carrier with the same keys in the same order, or to ports without
+        channel names (single channels, a `Vector`) of the same width.
+        Raises a ValueError naming the ports if they dont match.
         """
-        n_src = len(self)
+        src = self.source
+        src_keys = src.block.outputs._channel_keys(src.ports)
         for trg in self.targets:
-            if len(trg.block.inputs._resolve(trg.ports)) != n_src:
-                raise ValueError(f"Source and target have different number of ports!")
+            trg_keys = trg.block.inputs._channel_keys(trg.ports)
+            if len(trg_keys) != len(src_keys):
+                raise ValueError(
+                    f"Source {src} has {len(src_keys)} channels, "
+                    f"target {trg} has {len(trg_keys)}!"
+                )
+            for i, (a, b) in enumerate(zip(src_keys, trg_keys)):
+                if a is not None and b is not None and a != b:
+                    raise ValueError(
+                        f"Channel {i} is '{a}' at source {src} but '{b}' "
+                        f"at target {trg}, the carriers do not match: "
+                        f"{tuple(src_keys)} -> {tuple(trg_keys)}!"
+                    )
 
 
     def _validate_ports(self):
