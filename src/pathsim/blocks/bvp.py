@@ -50,8 +50,10 @@ class BVP1D(Block):
     ----
     Interior / multipoint conditions are not supported by
     :func:`scipy.integrate.solve_bvp` and are therefore not available in this
-    block. If a solve does not converge, the previous output and warm-start are
-    retained and the `success` attribute is set to `False`.
+    block. The warm-start mesh only grows during refinement, so a warm-started
+    solve that fails is repeated once from the initial mesh and guess. If that
+    does not converge either, the previous output and warm-start are retained
+    and the `success` attribute is set to `False`.
 
     Example
     -------
@@ -104,14 +106,16 @@ class BVP1D(Block):
         number of first-order equations
     domain : tuple[float, float]
         spatial domain `(a, b)`
-    n_nodes : int
-        number of nodes in the initial mesh
+    n_nodes : int, array[float]
+        number of nodes of an equidistant initial mesh, or the initial mesh
+        itself as an increasing array spanning the domain (e.g. graded towards
+        a boundary layer)
     x_eval : array[float], None
-        query points for the output, defaults to `n_nodes` points spanning the
-        domain
+        query points for the output, defaults to the initial mesh
     y0 : array[float], callable, None
-        initial guess for the solution, either an `(n, n_nodes)` array, a
-        callable `y0(x)` returning `(n, m)`, or `None` for an all-zero guess
+        initial guess for the solution, either an `(n, m)` array on the
+        initial mesh with `m` nodes, a callable `y0(x)` returning `(n, m)`, or
+        `None` for an all-zero guess
     p0 : array[float], None
         initial guess for the free parameters, `None` if there are none
     tol : float
@@ -158,23 +162,29 @@ class BVP1D(Block):
         self._has_p = p0 is not None
         self.p0 = None if p0 is None else np.atleast_1d(p0).astype(float)
 
+        #initial mesh, equidistant or given
+        if np.ndim(n_nodes) == 0:
+            self._x0 = np.linspace(a, b, int(n_nodes))
+        else:
+            self._x0 = np.asarray(n_nodes, dtype=float).copy()
+
         #query points for the output
-        self.x_eval = (np.linspace(a, b, n_nodes) if x_eval is None
+        self.x_eval = (self._x0.copy() if x_eval is None
                        else np.asarray(x_eval, dtype=float))
 
         #solver tolerance and mesh node cap
         self.tol = tol
         self.max_nodes = int(max_nodes)
 
-        #initial mesh and solution guess (used as warm-start)
-        self._x0 = np.linspace(a, b, n_nodes)
+        #initial solution guess (used as warm-start)
+        m = self._x0.size
         if y0 is None:
-            self._y0 = np.zeros((self.n, n_nodes))
+            self._y0 = np.zeros((self.n, m))
         elif callable(y0):
             self._y0 = np.atleast_2d(y0(self._x0)).astype(float)
         else:
             self._y0 = np.broadcast_to(
-                np.atleast_2d(y0), (self.n, n_nodes)
+                np.atleast_2d(y0), (self.n, m)
                 ).astype(float).copy()
 
         #warm-start state
@@ -238,6 +248,21 @@ class BVP1D(Block):
         return self._x
 
 
+    def _solve(self, u, mesh, guess, params):
+        """Run :func:`scipy.integrate.solve_bvp` for the input `u` from the
+        given mesh, solution guess and free parameters.
+        """
+        if self._has_p:
+            _fun = lambda x, y, p: self.fun(x, y, p, u)
+            _bc = lambda ya, yb, p: self.bc(ya, yb, p, u)
+            return solve_bvp(_fun, _bc, mesh, guess, p=params,
+                             tol=self.tol, max_nodes=self.max_nodes)
+        _fun = lambda x, y: self.fun(x, y, None, u)
+        _bc = lambda ya, yb: self.bc(ya, yb, None, u)
+        return solve_bvp(_fun, _bc, mesh, guess,
+                         tol=self.tol, max_nodes=self.max_nodes)
+
+
     def update(self, t):
         """Solve the boundary value problem for the current input and expose the
         sampled solution and converged parameters at the output.
@@ -258,17 +283,11 @@ class BVP1D(Block):
             self.success = True
             return
 
-        #scipy callbacks, with or without free parameters
-        if self._has_p:
-            _fun = lambda x, y, p: self.fun(x, y, p, u)
-            _bc = lambda ya, yb, p: self.bc(ya, yb, p, u)
-            sol = solve_bvp(_fun, _bc, self._x, self._y, p=self._p,
-                            tol=self.tol, max_nodes=self.max_nodes)
-        else:
-            _fun = lambda x, y: self.fun(x, y, None, u)
-            _bc = lambda ya, yb: self.bc(ya, yb, None, u)
-            sol = solve_bvp(_fun, _bc, self._x, self._y,
-                            tol=self.tol, max_nodes=self.max_nodes)
+        #warm-started solve, repeated from the initial mesh and guess if it
+        #fails, since the warm-start mesh only grows during refinement
+        sol = self._solve(u, self._x, self._y, self._p)
+        if not sol.success and not np.array_equal(self._x, self._x0):
+            sol = self._solve(u, self._x0, self._y0, self.p0)
 
         self.success = bool(sol.success)
 
