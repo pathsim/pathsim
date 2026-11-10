@@ -15,6 +15,7 @@ from ._block import Block
 
 from ..utils.register import Register
 from ..optim.operator import Operator
+from ..utils.carrier import ports
 from ..utils.mutable import mutable
 
 
@@ -29,7 +30,25 @@ class Math(Block):
     Its intended to be used as a base for the elementary math blocks. 
     Its **not** intended to be used directly!
 
+    The elementwise blocks take a carrier: input and output are then a
+    stream of multiple channels, 'in' and 'out', and the operation applies
+    to every channel.
+
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
     """
+
+    def __init__(self, carrier=None):
+
+        self.carrier = carrier
+        if carrier is not None:
+            self.input_port_labels = ports(carrier, ["in"])
+            self.output_port_labels = ports(carrier, ["out"])
+
+        super().__init__()
 
     def __len__(self):
         """Purely algebraic block"""
@@ -61,14 +80,20 @@ class Sin(Math):
         \\vec{y} = \\sin(\\vec{u}) 
 
 
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -86,14 +111,20 @@ class Cos(Math):
         
         \\vec{y} = \\cos(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -111,14 +142,20 @@ class Sqrt(Math):
         
         \\vec{y} = \\sqrt{|\\vec{u}|} 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -136,14 +173,20 @@ class Abs(Math):
         
         \\vec{y} = \\vert| \\vec{u} \\vert| 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -166,14 +209,18 @@ class Pow(Math):
     exponent : float, array_like
         exponent to raise the input to the power of
         
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self, exponent=2):
-        super().__init__()
+    def __init__(self, exponent=2, carrier=None):
+        super().__init__(carrier)
 
         self.exponent = exponent
 
@@ -262,6 +309,9 @@ class Polynomial(Math):
     coeffs : array_like
         polynomial coefficients in descending order of power,
         following the ``numpy.polyval`` convention
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
 
     Attributes
     ----------
@@ -269,8 +319,8 @@ class Polynomial(Math):
         internal algebraic operator
     """
 
-    def __init__(self, coeffs=[1.0, 0.0]):
-        super().__init__()
+    def __init__(self, coeffs=[1.0, 0.0], carrier=None):
+        super().__init__(carrier)
 
         self.coeffs = np.asarray(coeffs, dtype=float)
 
@@ -297,14 +347,20 @@ class Exp(Math):
         
         \\vec{y} = e^{\\vec{u}} 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -322,14 +378,20 @@ class Log(Math):
         
         \\vec{y} = \\ln(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -347,14 +409,20 @@ class Log10(Math):
         
         \\vec{y} = \\log_{10}(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -372,14 +440,20 @@ class Tan(Math):
         
         \\vec{y} = \\tan(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -397,14 +471,20 @@ class Sinh(Math):
         
         \\vec{y} = \\sinh(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -422,14 +502,20 @@ class Cosh(Math):
         
         \\vec{y} = \\cosh(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -447,14 +533,20 @@ class Tanh(Math):
         
         \\vec{y} = \\tanh(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -472,14 +564,20 @@ class Atan(Math):
         
         \\vec{y} = \\arctan(\\vec{u}) 
         
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         #create internal algebraic operator
         self.op_alg = Operator(
@@ -532,14 +630,18 @@ class Mod(Math):
     modulus : float
         modulus value
         
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self, modulus=1.0):
-        super().__init__()
+    def __init__(self, modulus=1.0, carrier=None):
+        super().__init__(carrier)
 
         self.modulus = modulus
 
@@ -566,14 +668,18 @@ class Clip(Math):
     max_val : float, array_like
         maximum clipping value
         
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self, min_val=-1.0, max_val=1.0):
-        super().__init__()
+    def __init__(self, min_val=-1.0, max_val=1.0, carrier=None):
+        super().__init__(carrier)
 
         self.min_val = min_val
         self.max_val = max_val
@@ -718,6 +824,9 @@ class Rescale(Math):
         output range upper bound
     saturate : bool
         if True, clamp output to [min(o0,o1), max(o0,o1)]
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
 
     Attributes
     ----------
@@ -725,8 +834,8 @@ class Rescale(Math):
         internal algebraic operator
     """
 
-    def __init__(self, i0=0.0, i1=1.0, o0=0.0, o1=1.0, saturate=False):
-        super().__init__()
+    def __init__(self, i0=0.0, i1=1.0, o0=0.0, o1=1.0, saturate=False, carrier=None):
+        super().__init__(carrier)
 
         self.i0 = i0
         self.i1 = i1
@@ -770,14 +879,20 @@ class Alias(Math):
 
     This block supports vector inputs.
 
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
+
     Attributes
     ----------
     op_alg : Operator
         internal algebraic operator
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, carrier=None):
+        super().__init__(carrier)
 
         self.op_alg = Operator(
             func=lambda x: x,

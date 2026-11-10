@@ -20,6 +20,7 @@ from ..events.schedule import Schedule
 from ..utils.realtimeplotter import RealtimePlotter
 from ..utils.plotting import show
 from ..utils.deprecation import deprecated
+from ..utils.carrier import ports
 
 from .._constants import COLORS_ALL
 
@@ -44,6 +45,9 @@ class Scope(Block):
         wait time before starting recording, optional
     labels : list[str]
         labels for the scope traces, and for the csv, optional
+    carrier : Carrier | None
+        layout of a stream recorded on the input port 'in', its channels
+        are the traces, labelled with the keys of the carrier
 
     Attributes
     ----------
@@ -62,7 +66,14 @@ class Scope(Block):
     input_port_labels = None
     output_port_labels = {}
 
-    def __init__(self, sampling_period=None, t_wait=0.0, labels=None):
+    def __init__(self, sampling_period=None, t_wait=0.0, labels=None, carrier=None):
+
+        self.carrier = carrier
+        if carrier is not None:
+            self.input_port_labels = ports(carrier, ["in"])
+            if labels is None:
+                labels = list(carrier.keys) or [str(i) for i in range(carrier.size)]
+
         super().__init__()
 
         #time delay until start recording

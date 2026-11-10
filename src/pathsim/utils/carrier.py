@@ -8,6 +8,10 @@
 ##
 #########################################################################################
 
+# IMPORTS ===============================================================================
+
+import copy
+
 # CLASSES ===============================================================================
 
 class Carrier:
@@ -157,6 +161,27 @@ class Carrier:
         return slice(self.start, self.stop)
 
 
+    def at(self, start):
+        """The same layout, same type and keys, placed at another position
+        in the register of a block.
+
+        Parameters
+        ----------
+        start : int
+            index of the first channel
+
+        Returns
+        -------
+        carrier : Carrier
+            copy of the carrier starting at 'start'
+        """
+        if not isinstance(start, int) or start < 0:
+            raise ValueError(f"Start '{start}' must be a positive int!")
+        placed = copy.copy(self)
+        placed.start, placed.stop = start, start + self.size
+        return placed
+
+
 class Vector(Carrier):
     """Carrier for a fixed number of unnamed channels.
 
@@ -203,3 +228,34 @@ class Vector(Carrier):
             number of channels
         """
         return self._size
+
+
+# FUNCTIONS =============================================================================
+
+def ports(carrier, names, start=0):
+    """Port labels for ports of one layout, placed one after another in the
+    register of a block from 'start' on. With a carrier every port is a
+    carrier of its layout, without one every port is a single channel.
+
+    .. code-block:: python
+
+        ports(Species(), ["in_0", "in_1"])  # -> {"in_0": Species(0), "in_1": Species(3)}
+        ports(None, ["in_0", "in_1"])       # -> {"in_0": 0, "in_1": 1}
+
+    Parameters
+    ----------
+    carrier : Carrier | None
+        layout of the ports
+    names : list[str]
+        names of the ports
+    start : int
+        index of the first channel of the first port
+
+    Returns
+    -------
+    labels : dict[str, int | Carrier]
+        port labels for the register of a block
+    """
+    if carrier is None:
+        return {name: start + i for i, name in enumerate(names)}
+    return {name: carrier.at(start + i * carrier.size) for i, name in enumerate(names)}

@@ -11,7 +11,7 @@ import numpy as np
 
 from ._block import Block
 from ..optim.operator import Operator
-from ..utils.carrier import Carrier, Vector
+from ..utils.carrier import ports
 from ..utils.mutable import mutable
 
 
@@ -88,19 +88,8 @@ class Splitter(Block):
             raise ValueError(f"'fractions' must sum up to one but sum up to {np.sum(self.fractions)}!")
 
         #ports with the layout of the carrier, placed one after another
-        n = 1 if carrier is None else len(carrier)
-
-        def _port(start):
-            if carrier is None:
-                return start
-            if carrier.keys:
-                return Carrier(start, keys=carrier.keys)
-            return Vector(n, start)
-
-        self.input_port_labels = {"in": _port(0)}
-        self.output_port_labels = {
-            f"out_{i}": _port(i * n) for i in range(len(self.fractions))
-            }
+        self.input_port_labels = ports(carrier, ["in"])
+        self.output_port_labels = ports(carrier, [f"out_{i}" for i in range(len(self.fractions))])
 
         super().__init__()
 

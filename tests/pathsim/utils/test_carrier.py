@@ -13,9 +13,9 @@ import unittest
 import numpy as np
 
 from pathsim import Simulation, Connection, Subsystem, Interface
-from pathsim.blocks import Amplifier
+from pathsim.blocks import Amplifier, Adder, Sin, Pow, Scope
 from pathsim.blocks._block import Block
-from pathsim.utils.carrier import Carrier, Vector
+from pathsim.utils.carrier import Carrier, Vector, ports
 
 
 # TESTS ================================================================================
@@ -352,6 +352,102 @@ class TestCarrierPorts(unittest.TestCase):
 
         #single channel through the subsystem
         self.assertEqual(len(Connection(sub["out"]["T"], snk["in"]["T"])), 1)
+
+
+class TestCarrierBlocks(unittest.TestCase):
+    """
+    Elementwise blocks and the Scope with a carrier: ports of its layout,
+    the operation per channel, the layout placed by 'ports'
+    """
+
+    def setUp(self):
+
+        class Species(Carrier):
+            keys = ("H", "D", "T")
+
+        class Stream(Block):
+            output_port_labels = {"out": Species()}
+
+            def __init__(self, value):
+                super().__init__()
+                self.value = np.asarray(value, dtype=float)
+
+            def update(self, t):
+                self.outputs["out"] = self.value
+
+        self.Species, self.Stream = Species, Stream
+
+    def run_into(self, block, *sources, port="in"):
+        """Feed streams into the block, return the simulation"""
+        names = [port] if len(sources) == 1 else [f"in_{i}" for i in range(len(sources))]
+        sim = Simulation(
+            [*sources, block],
+            [Connection(src["out"], block[name]) for src, name in zip(sources, names)],
+            dt=0.1,
+            log=False
+            )
+        sim.run(0.1)
+        return sim
+
+    def test_at(self):
+        C = self.Species(2)
+        D = C.at(5)
+        self.assertIsInstance(D, self.Species)
+        self.assertEqual((D.start, D.stop, D["T"]), (5, 8, 7))
+        self.assertEqual((C.start, C.stop), (2, 5))
+        with self.assertRaises(ValueError): C.at(-1)
+
+    def test_ports(self):
+        labels = ports(self.Species(), ["in_0", "in_1"], start=1)
+        self.assertEqual([labels["in_0"].start, labels["in_1"].start], [1, 4])
+        self.assertEqual(ports(None, ["a", "b"]), {"a": 0, "b": 1})
+
+    def test_amplifier(self):
+        A = Amplifier([1.0, 2.0, 3.0], carrier=self.Species())
+        self.run_into(A, self.Stream([1.0, 1.0, 1.0]))
+        np.testing.assert_array_almost_equal(A.outputs["out"], [1.0, 2.0, 3.0])
+
+        #named channels must match
+        class Other(Carrier):
+            keys = ("T", "D", "H")
+        with self.assertRaises(ValueError):
+            Connection(self.Stream([0, 0, 0])["out"], Amplifier(carrier=Other())["in"])
+
+    def test_adder(self):
+        A = Adder("+-", carrier=self.Species())
+        self.run_into(A, self.Stream([3.0, 2.0, 1.0]), self.Stream([1.0, 1.0, 1.0]))
+        np.testing.assert_array_almost_equal(A.outputs["out"], [2.0, 1.0, 0.0])
+
+        #two inputs without operations
+        A = Adder(carrier=self.Species())
+        self.assertIn("in_1", A.inputs)
+        np.testing.assert_array_almost_equal(A.op_alg.jac(np.ones(6)), np.hstack([np.eye(3)] * 2))
+
+    def test_math(self):
+        S = Sin(carrier=self.Species())
+        self.run_into(S, self.Stream([0.0, np.pi / 2, np.pi]))
+        np.testing.assert_array_almost_equal(S.outputs["out"], [0.0, 1.0, 0.0])
+
+        #parameters survive with the carrier
+        P = Pow(exponent=2, carrier=self.Species())
+        self.run_into(P, self.Stream([1.0, 2.0, 3.0]))
+        np.testing.assert_array_almost_equal(P.outputs["out"], [1.0, 4.0, 9.0])
+
+    def test_scope(self):
+        S = Scope(carrier=self.Species())
+        self.assertEqual(S.labels, ["H", "D", "T"])
+        self.run_into(S, self.Stream([1.0, 2.0, 3.0]))
+        _, data = S.read()
+        np.testing.assert_array_almost_equal(data[:, -1], [1.0, 2.0, 3.0])
+
+        #explicit labels win, unnamed channels by position
+        self.assertEqual(Scope(labels=["a", "b", "c"], carrier=self.Species()).labels, ["a", "b", "c"])
+        self.assertEqual(Scope(carrier=Vector(2)).labels, ["0", "1"])
+
+    def test_without_carrier(self):
+        #the blocks are unchanged without a carrier
+        self.assertIsNone(Amplifier().input_port_labels)
+        self.assertEqual(Adder().output_port_labels, {"out": 0})
 
 
 # RUN TESTS LOCALLY ====================================================================
