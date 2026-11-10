@@ -40,6 +40,8 @@ from pathsim.blocks import Source, Relay
 from pathsim.events.schedule import Schedule
 from pathsim.events._event import Event
 from pathsim.exceptions import StopSimulation
+from pathsim.blocks import WhiteNoise, Spectrum
+from pathsim.solvers import EUF, RK4
 
 
 # TESTS ================================================================================
@@ -1429,6 +1431,67 @@ class TestSteadyStateSingularJacobian(unittest.TestCase):
 
         #dx/dt = u - x -> x = u = 2
         self.assertAlmostEqual(float(np.atleast_1d(integ.state)[0]), 2.0, places=4)
+
+
+class TestSimulationStageReuse(unittest.TestCase):
+    """The evaluation that ends a timestep is the first stage of the next one
+    for explicit solvers, unless something changed the blocks in between."""
+
+    def build(self, Solver, blocks=()):
+        src = Source(lambda t: np.sin(t))
+        amp = Amplifier(2.0)
+        itg = Integrator(0.0)
+        sco = Scope()
+        extra = list(blocks)
+        conns = [Connection(src, amp), Connection(amp, itg), Connection(itg, sco)]
+        sim = Simulation([src, amp, itg, sco, *extra], conns, dt=0.1, Solver=Solver, log=False)
+        return sim, amp, sco
+
+    def test_reuse_saves_one_evaluation(self):
+        for Solver, stages in ((EUF, 1), (RK4, 4)):
+            sim, *_ = self.build(Solver)
+            sim._timestep(0.1)
+            _, _, _, evals, _ = sim._timestep(0.1)
+            #stages plus the evaluation at the end, the first stage reused
+            self.assertEqual(evals, stages)
+
+    def test_public_timestep_evaluates(self):
+        sim, *_ = self.build(EUF)
+        sim.timestep(0.1)
+        _, _, _, evals, _ = sim.timestep(0.1)
+        self.assertEqual(evals, 2)
+
+    def test_same_result(self):
+        #a run with reuse against timesteps without
+        sim_a, _, sco_a = self.build(RK4)
+        sim_a.run(2.0)
+        sim_b, _, sco_b = self.build(RK4)
+        while sim_b.time < 2.0 - 1e-12:
+            sim_b.timestep(0.1)
+        #the run records the initial point in addition
+        np.testing.assert_array_equal(sco_a.read()[1][:, 1:], sco_b.read()[1])
+
+    def test_sampling_block_disables_reuse(self):
+        sim, *_ = self.build(EUF, blocks=[WhiteNoise(seed=1)])
+        sim._timestep(0.1)
+        _, _, _, evals, _ = sim._timestep(0.1)
+        self.assertEqual(evals, 2)
+
+    def test_recorders_keep_reuse(self):
+        self.assertFalse(Scope().samples_outputs)
+        self.assertFalse(Spectrum(freq=[1.0]).samples_outputs)
+        self.assertTrue(WhiteNoise().samples_outputs)
+        self.assertFalse(Amplifier().samples_outputs)
+
+    def test_change_between_runs(self):
+        #a parameter changed between runs reaches the first stage
+        sim, amp, sco = self.build(EUF)
+        sim.run(1.0)
+        amp.gain = 0.0
+        sim.run(1.0)
+        _, (x,) = sco.read()
+        #with zero gain the integrator holds from the first step of the second run
+        self.assertEqual(x[-1], x[-5])
 
 
 # RUN TESTS LOCALLY ====================================================================

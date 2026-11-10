@@ -574,8 +574,23 @@ class Block:
 
     # methods for sampling data ---------------------------------------------------------
     
+    @property
+    def samples_outputs(self):
+        """Whether 'sample' can change the outputs or the state of the block,
+        so that the system has to be evaluated again after sampling. True for
+        every block that implements 'sample', blocks that only record their
+        inputs, such as the 'Scope', return False.
+
+        Returns
+        -------
+        samples : bool
+            sampling can change the outputs or the state
+        """
+        return type(self).sample is not Block.sample
+
+
     def sample(self, t, dt):
-        """Samples the data of the blocks inputs or internal state when called. 
+        """Samples the data of the blocks inputs or internal state when called.
 
         This can record block parameters after a successful timestep such as 
         for the 'Scope' and 'Delay' blocks but also for sampling from a random 

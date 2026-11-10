@@ -302,6 +302,12 @@ class Spectrum(Block):
         self.t_sample = json_data.get("t_sample", 0.0)
 
 
+    @property
+    def samples_outputs(self):
+        """Recording only, sampling leaves the outputs unchanged"""
+        return False
+
+
     def sample(self, t, dt):
         """sample time of successfull timestep for waiting period
     

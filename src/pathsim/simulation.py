@@ -240,6 +240,11 @@ class Simulation:
         #flag to suppress data sampling (used during shooting iterations)
         self._sampling_enabled = True
 
+        #time of the last system evaluation that is still current: nothing
+        #changed the blocks since, so a first explicit stage at that time can
+        #reuse it; 'None' if there is none
+        self._evaluated = None
+
         #convergence trackers for the three solver loops
         self._loop_tracker = ConvergenceTracker()
         self._solve_tracker = ConvergenceTracker()
@@ -1605,6 +1610,7 @@ class Simulation:
 
         #update the simulation (evaluation of rhs)
         self._update(t)
+        self._evaluated = t
 
 
     def _sample(self, t, dt):
@@ -1621,7 +1627,10 @@ class Simulation:
         if not self._sampling_enabled:
             return
         for block in self.blocks:
-            if block: block.sample(t, dt)
+            if block:
+                block.sample(t, dt)
+                if block.samples_outputs:
+                    self._evaluated = None
 
 
     def _buffer(self, t, dt):
@@ -1803,6 +1812,11 @@ class Simulation:
     def timestep(self, dt=None, adaptive=True):
         """Advances the transient simulation by one timestep 'dt'.
 
+        Called from the outside, the blocks may have changed since the last
+        timestep, so the first stage evaluates the system again. The run loop
+        uses '_timestep', which reuses the evaluation that ended the previous
+        timestep.
+
         Automatic behavior selection based on selected `Solver` and `adaptive` flag:
 
         - Explicit solvers: Uses `_update()` for system evaluation
@@ -1837,6 +1851,15 @@ class Simulation:
             total number of system evaluations
         total_solver_its : int
             total number of implicit solver iterations
+        """
+        self._evaluated = None
+        return self._timestep(dt, adaptive)
+
+
+    def _timestep(self, dt=None, adaptive=True):
+        """Core of 'timestep', see there. A first explicit stage at the time
+        of a current evaluation ('_evaluated') reuses it: the evaluation that
+        ends a timestep is the one the next timestep starts with.
         """
         #solver behavior flags (adaptive only if both flag and solver support it)
         is_adaptive = adaptive and self.engine.is_adaptive
@@ -1879,8 +1902,9 @@ class Simulation:
                             self.logger.warning(
                                 "implicit solver not converged at t={:.6f} (iters: {})\n{}".format(
                                     time_stage, solver_its, "\n".join(details)))
-                else:
-                    #explicit: evaluate system equation
+                elif self.engine.stage > 0 or self._evaluated != time_stage:
+                    #explicit: evaluate system equation, unless the first
+                    #stage is where the last evaluation still holds
                     self._update(time_stage)
                     total_evals += 1
 
@@ -1929,6 +1953,10 @@ class Simulation:
             )
             if self._diagnostics_history is not None:
                 self._diagnostics_history.append(self.diagnostics)
+
+        #the system at the end of the timestep is evaluated, sampling
+        #invalidates it if it changes outputs
+        self._evaluated = time_dt
 
         #sample data after successful timestep
         self._sample(time_dt, dt)
@@ -2009,6 +2037,9 @@ class Simulation:
         if reset:
             self.reset()
 
+        #the blocks may have changed since the last run
+        self._evaluated = None
+
         #make an adaptive run?
         _adaptive = adaptive and self.engine.is_adaptive
 
@@ -2053,7 +2084,7 @@ class Simulation:
 
             #advance the simulation by one (effective) timestep '_dt'
             try:
-                success, error_norm, scale, *_ = self.timestep(
+                success, error_norm, scale, *_ = self._timestep(
                     dt=_dt,
                     adaptive=_adaptive
                     )
@@ -2195,8 +2226,9 @@ class Simulation:
                 if now - last_tick >= tick_interval:
                     last_tick = now
 
-                    #yield intermediate results
+                    #yield intermediate results, the caller may change blocks
                     yield func_callback() if callable(func_callback) else None
+                    self._evaluated = None
 
             #final yield with complete results
             yield func_callback() if callable(func_callback) else None
@@ -2280,8 +2312,9 @@ class Simulation:
                     #compute progress
                     progress = (self.time - start_sim) / duration
 
-                    #yield intermediate results
+                    #yield intermediate results, the caller may change blocks
                     yield func_callback() if callable(func_callback) else None
+                    self._evaluated = None
 
                 #small sleep to avoid busy-waiting
                 time.sleep(0.001)
