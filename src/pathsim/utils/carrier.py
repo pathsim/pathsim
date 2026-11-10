@@ -27,11 +27,12 @@ class Carrier:
 
 
     The carrier only exists while the system graph is assembled. Component
-    access resolves to plain integer indices, either by attribute or by key
+    access resolves to plain integer indices, by key or by position, like a
+    dict of channel indices
 
     .. code-block:: python
 
-        _in_1.F     # -> 0
+        _in_1["F"]  # -> 0
         _in_1["T"]  # -> 1
         _in_1[1]    # -> 1
 
@@ -42,7 +43,7 @@ class Carrier:
     .. code-block:: python
 
         def func(u):
-            return u[_in_1.F] + u[_in_2.F]
+            return u[_in_1["F"]] + u[_in_2["F"]]
 
 
     Note
@@ -71,9 +72,6 @@ class Carrier:
 
     keys = ()
 
-    #names that would collide with the carrier interface itself
-    _reserved = ("keys", "start", "stop", "size", "slice")
-
     def __init__(self, start=0, keys=None):
 
         #channel names, from the arguments or from the class
@@ -84,8 +82,6 @@ class Carrier:
         for key in self.keys:
             if not isinstance(key, str):
                 raise ValueError(f"Key '{key}' must be str but is '{type(key)}'!")
-            if key in self._reserved or key.startswith("_"):
-                raise ValueError(f"Key '{key}' is reserved!")
         if len(set(self.keys)) < len(self.keys):
             raise ValueError("Keys must be unique!")
 
@@ -99,10 +95,6 @@ class Carrier:
 
         self.start = start
         self.stop = start + self.size
-
-        #channel indices as plain attributes, resolved once
-        for i, key in enumerate(self.keys):
-            setattr(self, key, start + i)
 
 
     def __repr__(self):
@@ -142,7 +134,7 @@ class Carrier:
         if isinstance(key, str):
             if key not in self.keys:
                 raise ValueError(f"Key '{key}' not defined for {self}!")
-            return getattr(self, key)
+            return self.start + self.keys.index(key)
 
         if isinstance(key, int):
             if key < 0 or key >= self.size:

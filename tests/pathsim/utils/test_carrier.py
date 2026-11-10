@@ -41,9 +41,6 @@ class TestCarrier(unittest.TestCase):
         with self.assertRaises(ValueError): Carrier(keys=("F", "F"))     #duplicates
         with self.assertRaises(ValueError): Carrier(keys=("F", 1))       #no str
         with self.assertRaises(ValueError): Carrier()                    #no channels
-        with self.assertRaises(ValueError): Carrier(keys=("F", "start")) #reserved
-        with self.assertRaises(ValueError): Carrier(keys=("F", "slice")) #reserved
-        with self.assertRaises(ValueError): Carrier(keys=("F", "_x"))    #reserved
         with self.assertRaises(ValueError): Carrier(-1, keys=("F",))     #negative start
         with self.assertRaises(ValueError): Carrier(1.5, keys=("F",))    #no int
 
@@ -55,29 +52,28 @@ class TestCarrier(unittest.TestCase):
 
         C = Mixture(2)
         self.assertEqual(C.keys, ("F", "T", "P"))
-        self.assertEqual(C.F, 2)
-        self.assertEqual(C.P, 4)
+        self.assertEqual(C["F"], 2)
+        self.assertEqual(C["P"], 4)
 
         #keys from the constructor
         class Stream(Carrier):
             def __init__(self, species, start=0):
                 super().__init__(start, keys=("F", "T", *species))
-                self.x = slice(self.T + 1, self.stop)
+                self.x = slice(self["T"] + 1, self.stop)
 
         C = Stream(("a", "b"), start=1)
         self.assertEqual(C.keys, ("F", "T", "a", "b"))
-        self.assertEqual(C.F, 1)
-        self.assertEqual(C.b, 4)
+        self.assertEqual(C["F"], 1)
+        self.assertEqual(C["b"], 4)
         self.assertEqual(C.x, slice(3, 5))
 
 
-    def test_attributes(self):
+    def test_no_attributes(self):
         C = Carrier(3, keys=("F", "T", "P"))
 
-        #channel indices as plain attributes
-        self.assertEqual(C.F, 3)
-        self.assertEqual(C.T, 4)
-        self.assertEqual(C.P, 5)
+        #channels by key only, names of the interface are free keys
+        self.assertFalse(hasattr(C, "F"))
+        self.assertEqual(Carrier(keys=("start", "slice"))["slice"], 1)
 
 
     def test_len(self):
@@ -210,8 +206,7 @@ class TestCarrierPorts(unittest.TestCase):
         with self.assertRaises(ValueError): src["out"]["x"]
         with self.assertRaises(ValueError): src["out"][3]
 
-        #no channel access by attribute, it would be shadowed by the
-        #attributes of the port reference itself
+        #channels by key only, no access by attribute
         with self.assertRaises(AttributeError): src["out"].T
 
 
