@@ -1478,10 +1478,10 @@ class TestSimulationStageReuse(unittest.TestCase):
         self.assertEqual(evals, 2)
 
     def test_recorders_keep_reuse(self):
-        self.assertFalse(Scope().samples_outputs)
-        self.assertFalse(Spectrum(freq=[1.0]).samples_outputs)
-        self.assertTrue(WhiteNoise().samples_outputs)
-        self.assertFalse(Amplifier().samples_outputs)
+        self.assertFalse(Scope()._samples_outputs)
+        self.assertFalse(Spectrum(freq=[1.0])._samples_outputs)
+        self.assertTrue(WhiteNoise()._samples_outputs)
+        self.assertFalse(Amplifier()._samples_outputs)
 
     def test_change_between_runs(self):
         #a parameter changed between runs reaches the first stage

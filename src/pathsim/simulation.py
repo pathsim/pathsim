@@ -1629,7 +1629,7 @@ class Simulation:
         for block in self.blocks:
             if block:
                 block.sample(t, dt)
-                if block.samples_outputs:
+                if block._samples_outputs:
                     self._evaluated = None
 
 
