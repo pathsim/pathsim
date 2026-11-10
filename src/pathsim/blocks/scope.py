@@ -194,6 +194,12 @@ class Scope(Block):
         self.recording_data.append(self.inputs.to_array())
 
 
+    @property
+    def samples_outputs(self):
+        """Recording only, sampling leaves the outputs unchanged"""
+        return False
+
+
     def sample(self, t, dt):
         """Sample the data from all inputs at every timestep.
 

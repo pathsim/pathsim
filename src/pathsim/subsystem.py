@@ -801,8 +801,14 @@ class Subsystem(Block):
 
     # methods for data recording ------------------------------------------------------------
 
+    @property
+    def samples_outputs(self):
+        """Sampling changes the outputs if it does for an internal block"""
+        return any(block.samples_outputs for block in self.blocks)
+
+
     def sample(self, t, dt):
-        """Update the internal connections again and sample data from 
+        """Update the internal connections again and sample data from
         the internal blocks that implement the 'sample' method.
     
         Parameters
