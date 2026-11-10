@@ -141,6 +141,11 @@ class Simulation:
     log : bool | string
         flag to enable logging, default see ´LOG_ENABLE´ in ´_constants.py´
         (alternatively a path to a log file can be specified)
+    diagnostics : bool | str
+        convergence diagnostics of the loop solver, the implicit solver and
+        the step error control; ´True´ keeps a snapshot of the last successful
+        timestep in ´diagnostics´, ´"history"´ in addition keeps the snapshots
+        of all timesteps, see ´diagnostics_history´
     solver_kwargs : dict
         additional parameters for numerical solvers such as absolute 
         (´tolerance_lte_abs´) and relative (´tolerance_lte_rel´) tolerance, 
@@ -310,6 +315,22 @@ class Simulation:
 
 
     # methods for access to metadata ----------------------------------------------
+
+    @property
+    def diagnostics_history(self):
+        """Diagnostics snapshots of all successful timesteps so far, in the
+        order of time, recorded with ´diagnostics="history"´
+
+        Returns
+        -------
+        history : tuple[Diagnostics] | None
+            one snapshot per successful timestep, ´None´ if the history is
+            not recorded
+        """
+        if self._diagnostics_history is None:
+            return None
+        return tuple(self._diagnostics_history)
+
 
     @property
     def size(self):

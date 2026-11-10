@@ -202,7 +202,7 @@ class TestDiagnosticsHistory(unittest.TestCase):
         )
         sim.run(0.1)
 
-        self.assertIsNone(sim._diagnostics_history)
+        self.assertIsNone(sim.diagnostics_history)
         self.assertIsInstance(sim.diagnostics, Diagnostics)
 
     def test_history_enabled(self):
@@ -217,11 +217,29 @@ class TestDiagnosticsHistory(unittest.TestCase):
         sim.run(0.1)
 
         #should have ~10 snapshots (0.1s / 0.01 dt)
-        self.assertGreater(len(sim._diagnostics_history), 5)
+        self.assertGreater(len(sim.diagnostics_history), 5)
 
         #each snapshot should have a time
-        times = [s.time for s in sim._diagnostics_history]
+        times = [s.time for s in sim.diagnostics_history]
         self.assertEqual(times, sorted(times))
+
+    def test_history_read_only(self):
+        src = Source(lambda t: 1.0)
+        integ = Integrator()
+        sim = Simulation(
+            blocks=[src, integ],
+            connections=[Connection(src, integ)],
+            dt=0.01,
+            diagnostics="history"
+        )
+        sim.run(0.05)
+
+        #the returned history is a copy, the recorded one is unchanged
+        history = sim.diagnostics_history
+        self.assertIsInstance(history, tuple)
+        with self.assertRaises(AttributeError):
+            sim.diagnostics_history = ()
+        self.assertEqual(len(sim.diagnostics_history), len(history))
 
     def test_history_reset(self):
         src = Source(lambda t: 1.0)
@@ -233,10 +251,10 @@ class TestDiagnosticsHistory(unittest.TestCase):
             diagnostics="history"
         )
         sim.run(0.05)
-        self.assertGreater(len(sim._diagnostics_history), 0)
+        self.assertGreater(len(sim.diagnostics_history), 0)
 
         sim.reset()
-        self.assertEqual(len(sim._diagnostics_history), 0)
+        self.assertEqual(len(sim.diagnostics_history), 0)
 
 
 class TestDiagnosticsUnit(unittest.TestCase):
