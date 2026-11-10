@@ -195,6 +195,62 @@ class TestBVP1D(unittest.TestCase):
         np.testing.assert_array_equal(bvp.outputs.to_array(), y_ok)
 
 
+    def test_initial_mesh_array(self):
+        #an array for n_nodes is the initial mesh, the default query points and
+        #the shape of an array guess follow it
+        fun = lambda x, y, p, u: np.vstack([y[1], -y[0]])
+        bc = lambda ya, yb, p, u: np.array([ya[0], yb[0] - 1.0])
+        mesh = np.pi/2 * np.array([0.0, 1e-3, 1e-2, 0.1, 0.5, 1.0])
+        bvp = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2), n_nodes=mesh,
+                    y0=np.array([[0.5], [0.5]]))
+
+        np.testing.assert_array_equal(bvp.x, mesh)
+        np.testing.assert_array_equal(bvp.x_eval, mesh)
+        self.assertEqual(bvp._y0.shape, (2, mesh.size))
+
+        bvp.update(0.0)
+        self.assertTrue(bvp.success)
+        np.testing.assert_allclose(bvp.solution()[0], np.sin(mesh), atol=1e-5)
+
+
+    def test_cold_restart_after_failed_warm_start(self):
+        #a warm-started solve that fails is repeated from the initial mesh, so
+        #the result does not depend on the solve history
+        import pathsim.blocks.bvp as bvpmod
+
+        fun = lambda x, y, p, u: np.vstack([y[1], -y[0]])
+        bc = lambda ya, yb, p, u: np.array([ya[0], yb[0] - u[0]])
+        bvp = BVP1D(fun, bc, n=2, domain=(0.0, np.pi/2), n_nodes=3, tol=1e-10)
+        n_initial = bvp.x.size
+
+        bvp.inputs[0] = 1.0
+        bvp.update(0.0)
+        self.assertTrue(bvp.success)
+        self.assertGreater(bvp.x.size, n_initial)
+
+        #fail every solve that does not start from the initial mesh
+        orig = bvpmod.solve_bvp
+        meshes = []
+
+        def _cold_only(fun, bc, x, y, **kwargs):
+            meshes.append(x.size)
+            sol = orig(fun, bc, x, y, **kwargs)
+            sol.success = sol.success and x.size == n_initial
+            return sol
+
+        bvpmod.solve_bvp = _cold_only
+        try:
+            bvp.inputs[0] = 2.0
+            bvp.update(0.0)
+        finally:
+            bvpmod.solve_bvp = orig
+
+        self.assertEqual(meshes[-1], n_initial)
+        self.assertGreater(meshes[0], n_initial)
+        self.assertTrue(bvp.success)
+        np.testing.assert_allclose(bvp.solution()[0, -1], 2.0, atol=1e-8)
+
+
     def test_input_unchanged_skips_resolve(self):
         #a re-evaluation with unchanged input must not trigger another solve,
         #but a changed input must
