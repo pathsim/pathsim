@@ -137,6 +137,42 @@ class Register:
         return np.array(indices, dtype=np.intp)
     
 
+    def _channel_keys(self, ports):
+        """Channel names of ports, in the order of their resolved channels.
+        A channel of a carrier with keys has its key, every other channel,
+        a single channel port or one of a `Vector`, has `None`.
+
+        Parameters
+        ----------
+        ports : list[int, str, tuple[str, int | str]]
+            port indices, port names or single channels of carriers
+
+        Returns
+        -------
+        keys : list[str | None]
+            name of every channel of the ports
+        """
+        keys = []
+        for p in ports:
+
+            #single channel of a carrier, by key or by position
+            if isinstance(p, tuple):
+                carrier = self._carriers[p[0]]
+                if isinstance(p[1], str):
+                    keys.append(p[1])
+                else:
+                    keys.append(carrier.keys[p[1]] if carrier.keys else None)
+                continue
+
+            carrier = self._carriers.get(p)
+            if carrier is None:
+                keys.append(None)
+            else:
+                keys.extend(carrier.keys or [None] * carrier.size)
+
+        return keys
+
+
     def _get_max_index(self, key):
         """Identify max index from different key types."""
         if isinstance(key, int):

@@ -15,6 +15,7 @@ import numpy as np
 from pathsim.utils.portreference import PortReference
 from pathsim.connection import Connection, Duplex
 from pathsim.blocks._block import Block
+from pathsim.utils.carrier import Carrier, Vector
 
 
 # TESTS ================================================================================
@@ -213,6 +214,67 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(len(B1.outputs), 2)
         self.assertEqual(len(B2.inputs), 5)
         self.assertEqual(len(B3.inputs), 7)
+
+
+
+class TestConnectionCarriers(unittest.TestCase):
+    """
+    Carrier ports: named channels meet channels of the same name, carriers
+    connect to unnamed ports of the same width, errors name the ports
+    """
+
+    def setUp(self):
+
+        class Species(Carrier):
+            keys = ("H", "D", "T")
+
+        class Swapped(Carrier):
+            keys = ("T", "D", "H")
+
+        class Source(Block):
+            output_port_labels = {"out": Species()}
+
+        class Target(Block):
+            input_port_labels = {"in": Species()}
+
+        class Reversed(Block):
+            input_port_labels = {"in": Swapped()}
+
+        class Unnamed(Block):
+            input_port_labels = {"in": Vector(3)}
+
+        self.src, self.trg, self.rev, self.vec = Source(), Target(), Reversed(), Unnamed()
+
+    def test_same_carrier(self):
+        Connection(self.src["out"], self.trg["in"])
+
+    def test_other_key_order_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            Connection(self.src["out"], self.rev["in"])
+        self.assertIn("'H'", str(ctx.exception))
+        self.assertIn("'T'", str(ctx.exception))
+
+    def test_carrier_to_unnamed_ports(self):
+        Connection(self.src["out"], self.vec["in"])
+        Connection(self.src["out"], Block()[0, 1, 2])
+
+    def test_single_channels(self):
+        Connection(self.src["out"]["T"], self.rev["in"]["T"])
+        with self.assertRaises(ValueError):
+            Connection(self.src["out"]["T"], self.rev["in"]["H"])
+
+    def test_width_error_names_ports(self):
+        with self.assertRaises(ValueError) as ctx:
+            Connection(Block()[0], self.trg["in"])
+        message = str(ctx.exception)
+        self.assertIn("Block[0]", message)
+        self.assertIn("['in']", message)
+        self.assertIn("1", message)
+        self.assertIn("3", message)
+
+    def test_str(self):
+        C = Connection(self.src["out"], self.trg["in"])
+        self.assertEqual(str(C), "Connection(Source['out'] -> Target['in'])")
 
 
 

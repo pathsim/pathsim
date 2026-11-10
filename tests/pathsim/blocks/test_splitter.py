@@ -81,7 +81,7 @@ class TestSplitter(unittest.TestCase):
         np.testing.assert_array_almost_equal(S.outputs["out_1"], [0.1, 0.2, 0.3])
 
         #single channel of an output
-        self.assertAlmostEqual(S.outputs[S.output_port_labels["out_1"].T], 0.3)
+        self.assertAlmostEqual(S.outputs[S.output_port_labels["out_1"]["T"]], 0.3)
 
 
     def test_vector(self):

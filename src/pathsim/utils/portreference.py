@@ -97,6 +97,12 @@ class PortReference:
         return PortReference(self.block, [(self.ports[0], key)])
 
 
+    def __str__(self):
+        """The block by its class and the ports, e.g. `Amplifier[0]` or
+        `Mixer['in_1', ('in_2', 'T')]`"""
+        return f"{type(self.block).__name__}[{', '.join(repr(p) for p in self.ports)}]"
+
+
     def _get_input_indices(self):
         """Get cached input indices, resolving string aliases to integers.
         Also expands the input array if needed.
