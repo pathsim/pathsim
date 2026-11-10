@@ -14,6 +14,7 @@ import numpy as np
 from ._block import Block
 from ..utils.register import Register
 from ..optim.operator import Operator
+from ..utils.carrier import ports
 
 
 # MISO BLOCKS ===========================================================================
@@ -57,13 +58,25 @@ class Adder(Block):
     called in the global simulation loop.
 
     
+    With a carrier, every input and the output is a stream of multiple
+    channels, the streams are added channel by channel. There is one input
+    per operation, 'in_0', 'in_1', ..., two without operations
+
+    .. code-block:: python
+
+        A = Adder("+-", carrier=Species())
+
+        C = Connection(B["out"], A["in_0"])
+
     Parameters
     ----------
     operations : str, optional
-        optional string of operations to be applied before 
-        summation, i.e. '+-' will compute the difference, 
+        optional string of operations to be applied before
+        summation, i.e. '+-' will compute the difference,
         'None' will just perform regular sum
-    
+    carrier : Carrier | None
+        layout of the input and output streams, single channels if 'None'
+
 
     Attributes
     ----------
@@ -78,7 +91,14 @@ class Adder(Block):
     input_port_labels = None
     output_port_labels = {"out":0}
 
-    def __init__(self, operations=None):
+    def __init__(self, operations=None, carrier=None):
+
+        self.carrier = carrier
+        if carrier is not None:
+            n_in = 2 if operations is None else len(operations)
+            self.input_port_labels = ports(carrier, [f"in_{i}" for i in range(n_in)])
+            self.output_port_labels = ports(carrier, ["out"])
+
         super().__init__()
 
         #allowed arithmetic operations
@@ -118,6 +138,15 @@ class Adder(Block):
             self.op_alg = Operator(
                 func=sum_ops, 
                 jac=jac_ops
+                )
+
+        #streams: the inputs as rows, summed per channel
+        if carrier is not None:
+            ops = np.ones(2) if operations is None else self._ops_array
+            n = carrier.size
+            self.op_alg = Operator(
+                func=lambda u: ops @ np.reshape(u, (len(ops), n)),
+                jac=lambda u: np.kron(ops.reshape(1, -1), np.eye(n))
                 )
 
 

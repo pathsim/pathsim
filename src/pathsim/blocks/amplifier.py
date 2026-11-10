@@ -11,6 +11,7 @@ import numpy as np
 
 from ._block import Block
 from ..optim.operator import Operator
+from ..utils.carrier import ports
 
 
 # SISO BLOCKS ===========================================================================
@@ -42,10 +43,22 @@ class Amplifier(Block):
         A = Amplifier(gain=5)
 
 
+    With a carrier, input and output are a stream of multiple channels and
+    every channel is amplified, by one gain or by a gain per channel
+
+    .. code-block:: python
+
+        A = Amplifier(gain=[1.0, 2.0, 3.0], carrier=Species())
+
+        C = Connection(A["out"], B["in"])
+
     Parameters
     ----------
-    gain : float
-        amplifier gain
+    gain : float | array_like
+        amplifier gain, one per channel with a carrier
+    carrier : Carrier | None
+        layout of the input and output stream, the operation applies to
+        every channel; a single channel if 'None'
 
         
     Attributes
@@ -54,8 +67,15 @@ class Amplifier(Block):
         internal algebraic operator
     """
 
-    def __init__(self, gain=1.0):
+    def __init__(self, gain=1.0, carrier=None):
+
+        self.carrier = carrier
+        if carrier is not None:
+            self.input_port_labels = ports(carrier, ["in"])
+            self.output_port_labels = ports(carrier, ["out"])
+
         super().__init__()
+
         self.gain = gain
 
         self.op_alg = Operator(
