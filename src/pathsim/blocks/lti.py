@@ -17,7 +17,6 @@ from scipy.signal import TransferFunction as _TransferFunction
 
 from ._block import Block
 
-from ..utils.register import Register
 from ..utils.gilbert import gilbert_realization
 from ..utils.deprecation import deprecated
 
@@ -112,8 +111,8 @@ class StateSpace(Block):
         else: n_out, _ = self.C.shape
 
         #set io channels
-        self.inputs = Register(n_in)
-        self.outputs = Register(n_out)
+        self.inputs.resize(n_in)
+        self.outputs.resize(n_out)
 
         #initial condition and shape validation
         if initial_value is None:

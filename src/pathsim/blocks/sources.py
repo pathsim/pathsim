@@ -12,7 +12,6 @@
 import numpy as np
 
 from ._block import Block
-from ..utils.register import Register
 from ..utils.deprecation import deprecated
 from ..utils.mutable import mutable
 from ..events.schedule import Schedule, ScheduleList
@@ -288,9 +287,6 @@ class GaussianPulseSource(Source):
     """
 
     def __init__(self, amplitude=1, f_max=1e3, tau=0.0):
-
-        #block outputs with port labels
-        self.outputs = Register(mapping={"out": 0})
 
         #block params
         self.amplitude = amplitude

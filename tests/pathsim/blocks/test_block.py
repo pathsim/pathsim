@@ -10,6 +10,7 @@
 # IMPORTS ==============================================================================
 
 import unittest
+import warnings
 import numpy as np
 
 from pathlib import Path
@@ -259,6 +260,30 @@ class TestBlock(unittest.TestCase):
 
         #without parameter dependent ports, instance and class agree
         self.assertEqual(Amplifier(2.0).info(), Amplifier.info())
+
+
+    def test_info_port_labels_address_instance(self):
+        """Every port label an instance reports in its info addresses its
+        registers, for all blocks that construct with default parameters.
+        """
+
+        import pathsim.blocks
+
+        for name, cls in vars(pathsim.blocks).items():
+            if not (isinstance(cls, type) and issubclass(cls, Block)):
+                continue
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                try:
+                    block = cls()
+                except (TypeError, ValueError):
+                    continue
+            info = block.info()
+            for register, labels in ((block.inputs, info["input_port_labels"]),
+                                     (block.outputs, info["output_port_labels"])):
+                for label in labels or {}:
+                    with self.subTest(block=name, label=label):
+                        self.assertIn(label, register._mapping)
 
 
     def test_register_sizing_from_port_labels(self):
