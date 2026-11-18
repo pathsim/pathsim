@@ -232,11 +232,15 @@ class Connection:
         the defined source and target blocks. 
 
         Utilizes the `PortReference._validate_output_ports` and 
-        `PortReference._validate_input_ports` methods.
+        `PortReference._validate_input_ports` methods, the error names
+        the connection.
         """
-        self.source._validate_output_ports()
-        for trg in self.targets:
-            trg._validate_input_ports()
+        try:
+            self.source._validate_output_ports()
+            for trg in self.targets:
+                trg._validate_input_ports()
+        except ValueError as e:
+            raise ValueError(f"{self}: {e}") from None
 
 
     def get_blocks(self):
@@ -294,10 +298,21 @@ class Connection:
         gap. Idempotent. New register slots are zero-initialised through
         ``np.zeros`` in ``Register.resize``.
 
+        The ports are resolved from scratch against the current registers
+        of the blocks and validated, so a graph assembly after a structural
+        change of a block (see ``Block._structure_changed``) restores the
+        register sizes and reports port aliases the block no longer has.
+
         The resolved indices are stored as data transfers for ``update``,
         transfers of a single channel use plain integer indices, which is
         faster than fancy indexing with an index array.
         """
+        for ref in (self.source, *self.targets):
+            ref._clear_indices()
+
+        self._validate_ports()
+        self._validate_dimensions()
+
         i_src = self.source._get_output_indices()
 
         self._transfers = []

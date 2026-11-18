@@ -115,6 +115,10 @@ class Block:
     #parameters that determine the port labels of an instance
     port_parameters = ()
 
+    #counter of structural changes of existing blocks, shared by all blocks,
+    #see '_structure_changed'
+    _structure_version = 0
+
     #blocks with a switching, discontinuous or non deterministic characteristic
     #set this to 'False' and are rejected by 'to_statespace'
     linearizable = True
@@ -210,6 +214,18 @@ class Block:
 
         else:
             raise ValueError(f"Port must be type (int, str, slice, tuple[int, str], list[int, str]) but is '{type(key)}'!")
+
+
+    def _structure_changed(self):
+        """Mark a structural change of the block after it was added to a
+        simulation or subsystem, such as a reinitialization that changes its
+        registers, ports or algebraic passthrough.
+
+        Simulations and subsystems compare the shared structure version with
+        the one their graph was assembled at and rebuild the graph on the next
+        evaluation, as after adding or removing a block.
+        """
+        Block._structure_version += 1
 
 
     def __call__(self):

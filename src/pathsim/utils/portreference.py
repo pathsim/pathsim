@@ -103,6 +103,14 @@ class PortReference:
         return f"{type(self.block).__name__}[{', '.join(repr(p) for p in self.ports)}]"
 
 
+    def _clear_indices(self):
+        """Drop the cached indices, so they are resolved again against the
+        current registers of the block, for example after its reinitialization.
+        """
+        self._input_indices = None
+        self._output_indices = None
+
+
     def _get_input_indices(self):
         """Get cached input indices, resolving string aliases to integers.
         Also expands the input array if needed.

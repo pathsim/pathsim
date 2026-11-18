@@ -262,5 +262,107 @@ class TestMutableInSimulation(unittest.TestCase):
         self.assertGreater(output_after, output_before)
 
 
+# STRUCTURAL CHANGES ====================================================================
+
+@mutable
+class _Pass(Block):
+    """y = u, with algebraic passthrough only if 'direct'"""
+
+    input_port_labels = {"in": 0}
+    output_port_labels = {"out": 0}
+
+    def __init__(self, direct=False):
+        super().__init__()
+        self.direct = direct
+
+    def __len__(self):
+        return int(self.direct)
+
+    def update(self, t):
+        self.outputs[0] = self.inputs[0]
+
+
+class TestMutableStructureInSimulation(unittest.TestCase):
+    """A reinitialization can change the registers, ports and passthrough of a
+    block, the simulation or subsystem holding it rebuilds its graph."""
+
+    def test_variable_ports(self):
+        """A block with variable ports keeps working on all of its channels."""
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Constant, Rescale
+
+        src = Constant([1.0, 2.0, 3.0])
+        res = Rescale()
+
+        sim = Simulation([src, res], [Connection(src[0:3], res[0:3])], dt=0.1, log=False)
+        sim.run(0.2)
+        np.testing.assert_array_equal(res.outputs.to_array(), [1.0, 2.0, 3.0])
+
+        res.o1 = 2.0
+        sim.run(0.2)
+        np.testing.assert_array_equal(res.outputs.to_array(), [2.0, 4.0, 6.0])
+
+    def test_port_count(self):
+        """Ports added by a parameter work, a removed port alias names the connection."""
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Constant, Splitter, Amplifier
+
+        src = Constant(1.0)
+        spl = Splitter([0.5, 0.5])
+        a0, a1 = Amplifier(), Amplifier()
+
+        sim = Simulation(
+            [src, spl, a0, a1],
+            [Connection(src, spl), Connection(spl["out_0"], a0), Connection(spl["out_1"], a1)],
+            dt=0.1, log=False
+            )
+        sim.run(0.2)
+
+        spl.fractions = [0.2, 0.3, 0.5]
+        sim.run(0.2)
+        self.assertAlmostEqual(a0.outputs[0], 0.2)
+        self.assertAlmostEqual(a1.outputs[0], 0.3)
+
+        spl.fractions = [1.0]
+        with self.assertRaises(ValueError) as ctx:
+            sim.run(0.2)
+        self.assertIn("Splitter['out_1']", str(ctx.exception))
+
+    def test_passthrough(self):
+        """A block that gains passthrough is evaluated after its input."""
+        from pathsim import Simulation, Connection
+        from pathsim.blocks import Source
+
+        src = Source(lambda t: t)
+        pas = _Pass(direct=False)
+
+        sim = Simulation([src, pas], [Connection(src, pas)], dt=0.1, log=False)
+        sim.run(0.3)
+
+        pas.direct = True
+        sim.timestep(0.1)
+        self.assertAlmostEqual(pas.outputs[0], sim.time)
+
+    def test_passthrough_in_subsystem(self):
+        """A block in a subsystem that gains passthrough gives the subsystem
+        passthrough, the subsystem and the simulation rebuild their graphs."""
+        from pathsim import Simulation, Connection, Subsystem, Interface
+        from pathsim.blocks import Source
+
+        itf = Interface()
+        pas = _Pass(direct=False)
+        sub = Subsystem([itf, pas], [Connection(itf, pas), Connection(pas, itf)])
+
+        src = Source(lambda t: t)
+        sim = Simulation([src, sub], [Connection(src, sub)], dt=0.1, log=False)
+        sim.run(0.3)
+        self.assertEqual(len(sub), 0)
+
+        pas.direct = True
+        sim.timestep(0.1)
+        self.assertEqual(len(sub), 1)
+        self.assertAlmostEqual(sub.outputs[0], sim.time)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -210,6 +210,9 @@ class Simulation:
         self.graph = None
         self._graph_dirty = False
 
+        #structure version of the blocks the graph was assembled at
+        self._structure_version = Block._structure_version
+
         #internal algebraic loop solvers -> initialized later
         self.boosters = None
 
@@ -733,6 +736,7 @@ class Simulation:
         with Timer(verbose=False) as T:
             self.graph = Graph(self.blocks, self.connections)
         self._graph_dirty = False
+        self._structure_version = Block._structure_version
 
         #create boosters for loop closing connections
         if self.graph.has_loops:
@@ -1103,10 +1107,9 @@ class Simulation:
             evaluation time for system function
         """
 
-        #lazy graph rebuild if dirty
-        if self._graph_dirty:
+        #lazy graph rebuild if dirty or a block changed its structure
+        if self._graph_dirty or self._structure_version != Block._structure_version:
             self._assemble_graph()
-            self._graph_dirty = False
 
         #evaluate DAG
         self._dag(t)
