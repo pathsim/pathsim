@@ -16,6 +16,9 @@ from pathsim.blocks.sources import (
     SinusoidalPhaseNoiseSource, ChirpPhaseNoiseSource, ChirpSource,
     PulseSource, Pulse, ClockSource, Clock, SquareWaveSource, StepSource, Step
 )
+from pathsim.blocks._block import Block
+from pathsim.connection import Connection
+from pathsim.utils.carrier import Carrier
 from pathsim.events.schedule import Schedule, ScheduleList
 from pathsim.solvers import EUF
 from pathsim.solvers.euler import EUB
@@ -50,6 +53,38 @@ class TestConstant(unittest.TestCase):
     def test_len(self):
         C = Constant()
         self.assertEqual(len(C), 0)  # No algebraic passthrough
+
+    def test_array(self):
+
+        #one output per element
+        C = Constant([1.0, 0.5, 0.0])
+        self.assertEqual(C.output_port_labels, {"out_0": 0, "out_1": 1, "out_2": 2})
+        self.assertEqual(C.info()["output_port_labels"], C.output_port_labels)
+
+        C.update(0)
+        np.testing.assert_array_equal(C.outputs.to_array(), [1.0, 0.5, 0.0])
+        self.assertEqual(C.outputs["out_1"], 0.5)
+
+        #scalar keeps the single output
+        self.assertEqual(Constant(5).output_port_labels, {"out": 0})
+
+        #input validation
+        with self.assertRaises(ValueError): Constant(np.ones((2, 2)))
+
+    def test_array_into_carrier(self):
+
+        class Species(Carrier):
+            keys = ("H", "D", "T")
+
+        class Target(Block):
+            input_port_labels = {"in": Species()}
+
+        C, B = Constant([1.0, 0.5, 0.0]), Target()
+        Con = Connection(C[0:3], B["in"])
+
+        C.update(0)
+        Con.update()
+        np.testing.assert_array_equal(B.inputs.to_array(), [1.0, 0.5, 0.0])
 
 
 class TestSource(unittest.TestCase):

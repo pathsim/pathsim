@@ -16,6 +16,7 @@ from pathlib import Path
 
 from pathsim.blocks._block import Block
 from pathsim.blocks.amplifier import Amplifier
+from pathsim.blocks.splitter import Splitter
 from pathsim.utils.register import Register
 from pathsim.utils.portreference import PortReference
 
@@ -200,7 +201,7 @@ class TestBlock(unittest.TestCase):
         info = Block.info()
 
         #check all expected keys are present
-        expected_keys = {"type", "description", "input_port_labels", "output_port_labels", "parameters", "icon"}
+        expected_keys = {"type", "description", "input_port_labels", "output_port_labels", "port_parameters", "parameters", "icon"}
         self.assertEqual(set(info.keys()), expected_keys)
 
         #check type is correct
@@ -215,6 +216,7 @@ class TestBlock(unittest.TestCase):
 
         #check parameters (base Block has no parameters)
         self.assertEqual(info["parameters"], {})
+        self.assertEqual(info["port_parameters"], ())
 
         #base Block has no icon
         self.assertIsNone(info["icon"])
@@ -240,23 +242,23 @@ class TestBlock(unittest.TestCase):
         self.assertEqual(info["parameters"]["gain"]["default"], 1.0)
 
 
-    def test_info_caching(self):
-        """Test that info method results are cached"""
+    def test_info_instance(self):
+        """Test info method on instances whose ports depend on parameters"""
 
-        #clear cache first
-        Block.info.cache_clear()
+        #class reports the class level port labels
+        info = Splitter.info()
+        self.assertIsNone(info["output_port_labels"])
+        self.assertEqual(info["port_parameters"], ("fractions",))
 
-        #call info twice
-        info1 = Block.info()
-        info2 = Block.info()
+        #instance reports its own port labels
+        info = Splitter([0.4, 0.6]).info()
+        self.assertEqual(info["type"], "Splitter")
+        self.assertEqual(info["output_port_labels"], {"out_0": 0, "out_1": 1})
+        self.assertEqual(info["port_parameters"], ("fractions",))
+        self.assertIn("fractions", info["parameters"])
 
-        #should be same object due to caching
-        self.assertIs(info1, info2)
-
-        #check cache was used
-        cache_info = Block.info.cache_info()
-        self.assertEqual(cache_info.hits, 1)
-        self.assertEqual(cache_info.misses, 1)
+        #without parameter dependent ports, instance and class agree
+        self.assertEqual(Amplifier(2.0).info(), Amplifier.info())
 
 
     def test_register_sizing_from_port_labels(self):
