@@ -179,6 +179,9 @@ class Subsystem(Block):
         self.graph = None
         self._graph_dirty = False
 
+        #structure version of the blocks the graph was assembled at
+        self._structure_version = Block._structure_version
+
         #internal algebraic loop solvers -> initialized later
         self.boosters = None
 
@@ -218,6 +221,8 @@ class Subsystem(Block):
         """Check if the Subsystem has algebraic passthrough by quering 
         the graph for an algebraic path from the interface to itself.
         """
+        if self._graph_stale:
+            self._assemble_graph()
         is_alg = self.graph.is_algebraic_path(self.interface, self.interface)
         return int(is_alg)
 
@@ -385,14 +390,27 @@ class Subsystem(Block):
         for block in self.blocks:
             block.inputs.reset()
 
+        #resolve all port indices against the current registers of the blocks
+        for con in self.connections:
+            con.resolve_ports()
+
         self.graph = Graph([*self.blocks, self.interface], self.connections)
         self._graph_dirty = False
+        self._structure_version = Block._structure_version
 
         #create boosters for loop closing connections
         if self.graph.has_loops:
             self.boosters = [
                 ConnectionBooster(conn) for conn in self.graph.loop_closing_connections()
             ]
+
+
+    @property
+    def _graph_stale(self):
+        """The internal graph needs a rebuild, because blocks or connections
+        were added or removed, or a block changed its structure.
+        """
+        return self._graph_dirty or self._structure_version != Block._structure_version
 
 
     # methods for access to metadata --------------------------------------------------------
@@ -837,7 +855,7 @@ class Subsystem(Block):
         """
 
         #lazy graph rebuild if dirty
-        if self._graph_dirty:
+        if self._graph_stale:
             self._assemble_graph()
 
         #evaluate DAG

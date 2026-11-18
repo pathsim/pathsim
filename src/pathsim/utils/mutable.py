@@ -25,6 +25,11 @@ def _do_reinit(block):
     Uses ``type(block).__init__`` to always reinit from the most derived class,
     ensuring that subclass overrides (e.g. operator replacements) are preserved.
 
+    The reinitialization creates new registers and can change the ports and
+    the algebraic passthrough of the block, so it is marked as a structural
+    change and the simulation or subsystem that holds the block rebuilds its
+    graph, as after adding the block again.
+
     Parameters
     ----------
     block : Block
@@ -66,6 +71,9 @@ def _do_reinit(block):
             )
             block.engine.tolerance_lte_abs = engine.tolerance_lte_abs
             block.engine.tolerance_lte_rel = engine.tolerance_lte_rel
+
+    # registers, ports and passthrough may have changed
+    block._structure_changed()
 
 
 # DECORATOR =============================================================================
