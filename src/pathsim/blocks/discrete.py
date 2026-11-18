@@ -16,7 +16,6 @@ from collections import deque
 from scipy.signal import tf2ss
 
 from ._block import Block
-from ..utils.register import Register
 from ..events.schedule import Schedule
 from ..utils.mutable import mutable
 
@@ -473,8 +472,8 @@ class DiscreteStateSpace(Block):
         else:
             self._D = self.D
 
-        self.inputs = Register(n_in)
-        self.outputs = Register(n_out)
+        self.inputs.resize(n_in)
+        self.outputs.resize(n_out)
 
         if initial_value is None:
             self.initial_value = np.zeros(n)
@@ -583,8 +582,7 @@ class TappedDelay(Block):
         self.T = T
         self.tau = tau
 
-        self.inputs = Register(1)
-        self.outputs = Register(self.N)
+        self.outputs.resize(self.N)
 
         self._buffer = deque([0.0] * self.N, maxlen=self.N)
 

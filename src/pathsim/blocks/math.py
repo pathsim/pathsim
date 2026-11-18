@@ -13,7 +13,6 @@ import numpy as np
 
 from ._block import Block
 
-from ..utils.register import Register
 from ..optim.operator import Operator
 from ..utils.mutable import mutable
 
@@ -623,8 +622,8 @@ class Matrix(Math):
         n, m = A.shape
 
         # initialize io registers
-        self.inputs = Register(size=m)
-        self.outputs = Register(size=n)
+        self.inputs.resize(m)
+        self.outputs.resize(n)
 
         # block matrix
         self.A = A

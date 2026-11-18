@@ -10,7 +10,6 @@
 import numpy as np
 
 from ._block import Block
-from ..utils.register import Register
 from ..events.schedule import Schedule
 
 
@@ -125,8 +124,8 @@ class KalmanFilter(Block):
         self.P = np.eye(self.n) if P0 is None else P0
 
         # Initialize io
-        self.inputs = Register(size=self.m+self.p)
-        self.outputs = Register(size=self.n)
+        self.inputs.resize(self.m+self.p)
+        self.outputs.resize(self.n)
 
         # Scheduled event if 'dt' is provided
         if self.dt is not None:
