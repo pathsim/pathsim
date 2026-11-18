@@ -21,24 +21,53 @@ from .._constants import TOLERANCE
 
 # GENERIC SOURCE BLOCKS =================================================================
 
+@mutable
 class Constant(Block):
-    """Produces a constant output signal (SISO).
+    """Produces a constant output signal.
 
     .. math::
 
         y(t) = const.
 
-        
+    A scalar value gives a single output 'out', an array value one output
+    per element, 'out_0', 'out_1', ...
+
+
+    Example
+    -------
+    Constant boundary values for three channels, for example the inlet flows
+    of a stream that is a carrier input of the block 'B':
+
+    .. code-block:: python
+
+        C = Constant([1.0, 0.5, 0.0])
+
+        Con = Connection(C[0:3], B["in"])
+
+
     Parameters
     ----------
-    value : float
-        constant defining block output
+    value : float, array_like
+        constant defining block output, scalar or 1d array
     """
 
     input_port_labels = {}
     output_port_labels = {"out":0}
 
+    port_parameters = ("value",)
+
     def __init__(self, value=1):
+
+        #input validation
+        if np.ndim(value) > 1:
+            raise ValueError(f"'value' must be a scalar or 1d array but has {np.ndim(value)} dimensions!")
+
+        #single output for a scalar, one output per element of an array
+        if np.ndim(value) == 0:
+            self.output_port_labels = {"out": 0}
+        else:
+            self.output_port_labels = {f"out_{i}": i for i in range(np.size(value))}
+
         super().__init__()
 
         self.value = value
@@ -63,7 +92,7 @@ class Constant(Block):
             absolute error to previous iteration for convergence 
             control (always '0.0' because source-type)
         """
-        self.outputs[0] = self.value
+        self.outputs.update_from_array(self.value)
         return 0.0
 
 

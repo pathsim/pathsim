@@ -24,6 +24,23 @@ from ..optim.operator import DynamicOperator
 from ..exceptions import LinearizationError
 
 
+# HELPERS ===============================================================================
+
+class _classorinstancemethod:
+    """Method decorator that binds to the class when called on the class and
+    to the instance when called on an instance, so one method can report the
+    class level defaults as well as the state of an instance.
+    """
+
+    def __init__(self, func):
+        self.__func__ = func
+        self.__doc__ = func.__doc__
+
+
+    def __get__(self, obj, cls=None):
+        return self.__func__.__get__(cls if obj is None else obj)
+
+
 # BASE BLOCK CLASS ======================================================================
 
 class Block:
@@ -86,10 +103,17 @@ class Block:
     linearizable : bool
         class level flag that declares whether the block has a valid linear
         state space model, see 'to_statespace'
+    port_parameters : tuple[str]
+        class level names of the '__init__' parameters the ports depend on,
+        such blocks set their port labels in '__init__' before calling
+        'super().__init__()', reported by 'info'
     """
 
     input_port_labels = None
     output_port_labels = None
+
+    #parameters that determine the port labels of an instance
+    port_parameters = ()
 
     #blocks with a switching, discontinuous or non deterministic characteristic
     #set this to 'False' and are rejected by 'to_statespace'
@@ -226,13 +250,20 @@ class Block:
         return len(self.inputs), len(self.outputs)
 
 
-    @classmethod
-    @lru_cache()
-    def info(cls):
+    @_classorinstancemethod
+    def info(self):
         """Get block metadata for introspection and UI integration.
 
-        Returns a dictionary containing block type information, port mappings,
-        and parameter definitions. Results are cached per class.
+        Callable on the class and on an instance. On the class it reports the
+        class level port labels, on an instance the port labels the instance
+        has, which differ for blocks whose ports depend on their parameters
+        (see 'port_parameters')
+
+        .. code-block:: python
+
+            Splitter.info()["output_port_labels"]            # -> None
+            Splitter([0.4, 0.6]).info()["output_port_labels"] # -> {"out_0": 0, "out_1": 1}
+
 
         Returns
         -------
@@ -242,19 +273,19 @@ class Block:
                 Class name of the block
             - description : str
                 Block docstring
-            - shape : tuple
-                Input/output shape (n_inputs, n_outputs)
-            - size : int
-                State vector size
-            - in_labels : dict
-                Input port name to index mapping
-            - out_labels : dict
-                Output port name to index mapping
+            - input_port_labels : dict | None
+                Input port names mapped to channels, 'None' for variable ports
+            - output_port_labels : dict | None
+                Output port names mapped to channels, 'None' for variable ports
+            - port_parameters : tuple[str]
+                Parameters that determine the ports, see 'port_parameters'
             - parameters : dict
                 Parameter names mapped to their default values
             - icon : str | None
                 SVG icon of the block, see 'icon'
         """
+
+        cls = self if isinstance(self, type) else type(self)
 
         # Get __init__ signature for parameters
         sig = inspect.signature(cls.__init__)
@@ -269,8 +300,9 @@ class Block:
         return {
             "type": cls.__name__,
             "description": cls.__doc__,
-            "input_port_labels": cls.input_port_labels,
-            "output_port_labels": cls.output_port_labels,
+            "input_port_labels": self.input_port_labels,
+            "output_port_labels": self.output_port_labels,
+            "port_parameters": cls.port_parameters,
             "parameters": params,
             "icon": cls.icon(),
             }

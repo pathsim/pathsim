@@ -61,6 +61,8 @@ class Splitter(Block):
     input_port_labels = {"in": 0}
     output_port_labels = None
 
+    port_parameters = ("fractions",)
+
     def __init__(self, fractions=None):
 
         self.fractions = np.ones(1) if fractions is None else np.asarray(fractions, dtype=float)
