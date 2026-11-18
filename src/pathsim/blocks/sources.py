@@ -21,6 +21,7 @@ from .._constants import TOLERANCE
 
 # GENERIC SOURCE BLOCKS =================================================================
 
+@mutable
 class Constant(Block):
     """Produces a constant output signal.
 
@@ -61,8 +62,10 @@ class Constant(Block):
         if np.ndim(value) > 1:
             raise ValueError(f"'value' must be a scalar or 1d array but has {np.ndim(value)} dimensions!")
 
-        #one output per element of an array value
-        if np.ndim(value) == 1:
+        #single output for a scalar, one output per element of an array
+        if np.ndim(value) == 0:
+            self.output_port_labels = {"out": 0}
+        else:
             self.output_port_labels = {f"out_{i}": i for i in range(np.size(value))}
 
         super().__init__()

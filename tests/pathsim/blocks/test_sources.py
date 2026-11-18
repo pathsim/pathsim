@@ -71,6 +71,21 @@ class TestConstant(unittest.TestCase):
         #input validation
         with self.assertRaises(ValueError): Constant(np.ones((2, 2)))
 
+    def test_mutable_value(self):
+
+        #changing the value rederives the ports
+        C = Constant(5)
+        C.value = [1.0, 2.0]
+        self.assertEqual(C.output_port_labels, {"out_0": 0, "out_1": 1})
+        C.update(0)
+        np.testing.assert_array_equal(C.outputs.to_array(), [1.0, 2.0])
+
+        C.value = 3.0
+        self.assertEqual(C.output_port_labels, {"out": 0})
+        self.assertEqual(C.info()["output_port_labels"], {"out": 0})
+        C.update(0)
+        self.assertEqual(C.outputs["out"], 3.0)
+
     def test_array_into_carrier(self):
 
         class Species(Carrier):
