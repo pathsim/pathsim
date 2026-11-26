@@ -590,6 +590,40 @@ class TestBDF6(unittest.TestCase):
         # plt.show()
 
 
+class TestBDFTimestepChange(unittest.TestCase):
+    """
+    Test that the 'BDF' solvers restart their history when the timestep changes
+    """
+
+    def test_changed_timestep_restarts_history(self):
+
+        #the equal-step coefficients integrate a constant exactly, but only
+        #on a history with the same timestep as the current step
+        func = lambda x, t: np.ones_like(x)
+        jac = lambda x, t: np.zeros((1, 1))
+
+        for Solver in [BDF2, BDF3, BDF4, BDF5, BDF6]:
+
+            with self.subTest(Solver.__name__):
+
+                solver = Solver()
+                time = 0.0
+
+                for dt in [0.1]*10 + [0.03] + [0.1]*10 + [0.05]*10:
+                    solver.integrate_singlestep(func, jac, time, dt)
+                    time += dt
+
+                self.assertAlmostEqual(solver.get()[0], time, 10)
+
+
+    def test_reset_forgets_timestep(self):
+
+        solver = BDF2()
+        solver.buffer(0.1)
+        solver.reset()
+        self.assertIsNone(solver._history_dt)
+
+
 # RUN TESTS LOCALLY ====================================================================
 
 if __name__ == '__main__':

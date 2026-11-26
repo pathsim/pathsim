@@ -2085,6 +2085,12 @@ class Simulation:
                     self.time - start_time, duration, rtol=1e-12, atol=0.0):
                 break
 
+            #shorten a fixed step that would pass the endpoint by more than
+            #rounding, so that consecutive runs end where a single run does
+            if not _adaptive and self.time + _dt > end_time and not np.isclose(
+                    self.time + _dt - start_time, duration, rtol=1e-12, atol=0.0):
+                _dt = end_time - self.time
+
             #advance the simulation by one (effective) timestep '_dt'
             try:
                 success, error_norm, scale, *_ = self._timestep(

@@ -41,7 +41,7 @@ from pathsim.events.schedule import Schedule
 from pathsim.events._event import Event
 from pathsim.exceptions import StopSimulation
 from pathsim.blocks import WhiteNoise, Spectrum
-from pathsim.solvers import EUF, RK4
+from pathsim.solvers import EUF, RK4, BDF2, BDF3, GEAR32
 
 
 # TESTS ================================================================================
@@ -578,10 +578,9 @@ class TestSimulationRunBoundaries(unittest.TestCase):
                 self.assertEqual(simulation.dt, dt)
 
 
-    def test_fixed_run_keeps_full_steps_for_non_aligned_endpoint(self):
-        for dt, duration, endpoint, steps in [(0.3, 1.0, 1.2, 4),
-                                             (2.0, 1.0, 2.0, 1),
-                                             (0.1, 0.05, 0.1, 1)]:
+    def test_fixed_run_shortens_last_step_for_non_aligned_endpoint(self):
+        for dt, duration, steps in [(0.3, 1.0, 4), (2.0, 1.0, 1),
+                                    (0.1, 0.05, 1)]:
             with self.subTest(dt=dt, duration=duration):
                 source = Constant(1.0)
                 integrator = Integrator()
@@ -594,10 +593,11 @@ class TestSimulationRunBoundaries(unittest.TestCase):
 
                 simulation.run(duration, adaptive=False)
 
-                self.assertAlmostEqual(simulation.time, endpoint)
-                self.assertAlmostEqual(integrator.outputs[0], endpoint)
+                self.assertAlmostEqual(simulation.time, duration)
+                self.assertAlmostEqual(integrator.outputs[0], duration)
                 times, _ = scope.read()
                 self.assertEqual(len(times), steps + 1)
+                self.assertAlmostEqual(times[-1], duration)
                 self.assertEqual(simulation.dt, dt)
 
 
@@ -634,6 +634,27 @@ class TestSimulationRunBoundaries(unittest.TestCase):
         self.assertAlmostEqual(simulation.time, 2.0)
         self.assertEqual(ticks, [0.0, 1.0, 2.0])
         self.assertAlmostEqual(integrator.outputs[0], split_output)
+
+
+    def test_fixed_split_runs_match_single_run_for_non_aligned_durations(self):
+        #the shortened last steps also restart the multistep BDF history
+        for Solver in [EUF, RK4, BDF2, BDF3, GEAR32]:
+            with self.subTest(Solver=Solver.__name__):
+                source = Constant(1.0)
+                integrator = Integrator()
+                simulation = Simulation(
+                    [source, integrator], [Connection(source, integrator)],
+                    dt=0.1, Solver=Solver, log=False
+                    )
+
+                for duration in [0.25, 0.5, 0.35]:
+                    simulation.run(duration, adaptive=False)
+                self.assertAlmostEqual(simulation.time, 1.1)
+                self.assertAlmostEqual(integrator.outputs[0], 1.1)
+
+                simulation.run(1.1, reset=True, adaptive=False)
+                self.assertAlmostEqual(simulation.time, 1.1)
+                self.assertAlmostEqual(integrator.outputs[0], 1.1)
 
 
 class TestSimulationEvents(unittest.TestCase):

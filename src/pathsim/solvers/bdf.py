@@ -24,6 +24,10 @@ class BDF(ImplicitSolver):
     ----- 
     This solver class is not intended to be used directly
 
+    The coefficients assume equal timesteps. A step of another size than the
+    one before it, such as a shortened last step of a run, restarts the
+    history with the startup method.
+
     Attributes
     ----------
     x : numeric, array[numeric]
@@ -69,6 +73,9 @@ class BDF(ImplicitSolver):
         #initialize startup solver from 'self' and flag
         self._needs_startup = True
         self.startup = DIRK3.cast(self, self.parent)
+
+        #timestep between the states in the history
+        self._history_dt = None
 
 
     @classmethod
@@ -138,6 +145,19 @@ class BDF(ImplicitSolver):
         return cls(initial_value, parent, **solver_kwargs)
 
 
+    def to_checkpoint(self, prefix):
+        """Serialize BDF solver state including the timestep of the history."""
+        json_data, npz_data = super().to_checkpoint(prefix)
+        json_data["history_dt"] = self._history_dt
+        return json_data, npz_data
+
+
+    def load_checkpoint(self, json_data, npz, prefix):
+        """Restore BDF solver state including the timestep of the history."""
+        super().load_checkpoint(json_data, npz, prefix)
+        self._history_dt = json_data.get("history_dt")
+
+
     def stages(self, t, dt):
         """Generator that yields the intermediate evaluation 
         time during the timestep 't + ratio * dt'.
@@ -175,6 +195,7 @@ class BDF(ImplicitSolver):
 
         #clear history (BDF solution buffer)
         self.history.clear()
+        self._history_dt = None
 
         #overwrite state with initial value (ensure array format)
         self.x = np.atleast_1d(self.initial_value).copy()
@@ -195,14 +216,21 @@ class BDF(ImplicitSolver):
         #reset optimizer
         self.opt.reset()
 
+        #the coefficients assume equal timesteps, a step of another size
+        #restarts the history
+        if self._history_dt is not None and dt != self._history_dt:
+            self.history.clear()
+        self._history_dt = dt
+
         #add current solution to history
         self.history.appendleft(self.x)
 
         #flag for startup method, not enough history
         self._needs_startup = len(self.history) < self.n
 
-        #buffer with startup method
+        #buffer with startup method, starting from the current state
         if self._needs_startup:
+            self.startup.state = self.x
             self.startup.buffer(dt)
 
 
