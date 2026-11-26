@@ -589,6 +589,42 @@ class TestGEARCheckpoint:
         assert np.allclose(integ2.state, reference, rtol=1e-6)
 
 
+class TestBDFCheckpoint:
+    """Test BDF solver checkpoint round-trip."""
+
+    def test_bdf_continue_after_load_with_shortened_step(self):
+        """A run that ends with a shortened step continues the same after load."""
+        from pathsim.solvers import BDF2
+
+        def make():
+            src, integ = Source(lambda t: 1.0), Integrator()
+            sim = Simulation(
+                blocks=[src, integ],
+                connections=[Connection(src, integ)],
+                dt=0.1,
+                Solver=BDF2,
+                log=False
+            )
+            return sim, integ
+
+        #the last step of the first run is 0.05
+        sim1, integ1 = make()
+        sim1.run(0.25, adaptive=False)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "cp")
+            sim1.save_checkpoint(path)
+
+            sim2, integ2 = make()
+            sim2.load_checkpoint(path)
+
+        sim1.run(0.85, adaptive=False)
+        sim2.run(0.85, adaptive=False)
+        assert np.isclose(sim2.time, 1.1)
+        assert np.allclose(integ1.state, 1.1)
+        assert np.allclose(integ2.state, integ1.state)
+
+
 class TestSpectrumCheckpoint:
     """Test Spectrum block checkpoint."""
 
