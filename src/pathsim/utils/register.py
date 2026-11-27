@@ -233,7 +233,7 @@ class Register:
         ----------
         key : int, str
             port key, where to set value
-        val : float, obj
+        value : float, obj
             value to set at port
         """
         if isinstance(key, str):

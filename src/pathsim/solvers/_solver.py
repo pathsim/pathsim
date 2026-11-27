@@ -773,7 +773,7 @@ class ImplicitSolver(Solver):
             function to integrate f(x, t)
         jac : callable
             jacobian of f w.r.t. x
-        time_start : float
+        time : float
             starting time for timestep
         dt : float
             integration timestep
