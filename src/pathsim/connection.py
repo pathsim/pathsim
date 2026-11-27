@@ -10,6 +10,7 @@
 
 # IMPORTS ===============================================================================
 
+from .blocks._block import Block
 from .utils.portreference import PortReference
 from .utils.deprecation import deprecated
 
