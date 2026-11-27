@@ -160,6 +160,20 @@ class TestConnection(unittest.TestCase):
         self.assertTrue(C)
 
 
+    def test_contains(self):
+
+        B1, B2, B3, B4 = Block(), Block(), Block(), Block()
+
+        C = Connection(B1, B2, B3)
+
+        self.assertIn(B1, C)
+        self.assertIn(B2, C)
+        self.assertIn(B3, C)
+        self.assertNotIn(B4, C)
+        self.assertNotIn("not a block", C)
+        self.assertNotIn(None, C)
+
+
     def test_resolve_ports_grows_input_register(self):
         """resolve_ports must size the target input register so blocks
         accessing inputs by position before any connection.update() runs
